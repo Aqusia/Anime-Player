@@ -1,0 +1,17 @@
+# dependencies
+node_modules
+
+# build output / artifacts
+out
+dist
+release
+.asar-staging
+
+# logs & temp
+*.log
+*.tmp
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
