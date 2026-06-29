@@ -5,6 +5,20 @@
 
 ---
 
+## 2026-06-29（第八輪）— 年份瀏覽：修排序 + 正規化跨年份 + 整合雙來源
+
+回報：anime1 年份排序很怪、跨年份很複雜、且要分開找（anime1 / myself 各一）。
+
+- **根因**：anime1 `year` 是字串、可跨年份（如 `"2019/2020"`）。舊 `yearOptions` 直接把整串當選項、`sort((x,y)=>+y-+x)` 對 `"2019/2020"` 得 NaN → 下拉排序亂掉；篩選用 `a.year === year` 精確比對 → 跨年份作品自成怪選項、不會出現在正常年份；且只有 anime1。
+- **修正**（`lib.ts` 新增 `primaryYear(year)`：抓第一個 4 位數年份，`"2019/2020"→2019`、myself 數字直接用）：
+  - `Home.tsx` 年份下拉 = anime1 ∪ myself 的**正規化年份**集合，數字降冪、無 `/` 選項。
+  - 純年份瀏覽時**合併兩來源**（anime1 依年份+選擇性類型；myself 依年份），用綜合評分（anime1 `weightedScore` / myself `weightedScoreMy`，同一把尺）排序，渲染成單一 `<Grid>`（多型）。類型篩選仍只限 anime1。
+  - 標題顯示「YYYY 年 作品 N（anime1 X · Myself Y）」。
+  - Home 掛載時 `loadMyCatalog()`（快取）以供年份整合。
+- **驗證** `cdp-verify-year.mjs`：38 個年份選項、降冪、無跨年份 `/`；選 2019 → 372 部（anime1 180 · Myself 192）；跨年份「Alicization War of Underworld」正確歸到 2019。
+
+---
+
 ## 2026-06-29（第七輪）— 個人化推薦 + 倉庫整理 + 文件 + 首次 commit
 
 ### 一、個人化推薦「因為你看了《X》」

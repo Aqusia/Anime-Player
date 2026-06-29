@@ -342,6 +342,18 @@ export function franchiseKey(title: string): string {
     .trim()
 }
 
+/**
+ * Primary 4-digit year from a title's year field. anime1 stores strings that can
+ * be cross-year ("2019/2020"); myself stores a number. Returns the first year
+ * (2019/2020 → 2019), or 0 if none — so cross-year titles bucket under one year
+ * instead of becoming their own weird filter option.
+ */
+export function primaryYear(year: string | number | undefined | null): number {
+  if (typeof year === 'number') return year > 1900 ? year : 0
+  const m = String(year ?? '').match(/\d{4}/)
+  return m ? +m[0] : 0
+}
+
 /** Relative time in Traditional Chinese, e.g. "3 天前". */
 export function timeAgo(ts: number): string {
   if (!ts) return ''

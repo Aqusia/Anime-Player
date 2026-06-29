@@ -1,8 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../store'
-import { api, type Progress } from '../api'
-import { becauseYouWatched, dedupeBy, genreList, groupBySeason, recommendedPool, sampleRecommended, sortByScore } from '../lib'
+import { api, type Anime, type MyAnime, type Progress } from '../api'
+import {
+  becauseYouWatched,
+  dedupeBy,
+  genreList,
+  groupBySeason,
+  primaryYear,
+  recommendedPool,
+  sampleRecommended,
+  sortByScore,
+  weightedScore,
+  weightedScoreMy
+} from '../lib'
 import Hero from '../components/Hero'
 import Row from '../components/Row'
 import ContinueRow from '../components/ContinueRow'
@@ -29,31 +40,46 @@ export default function Home() {
     if (g) setGenre(g)
   }, [params])
 
-  // year filter (anime1 list carries year/season)
+  // year filter — UNIFIED across both sources, normalized to the primary year
+  // (cross-year "2019/2020" buckets under 2019; myself years included too).
+  const myCatalog = useMemo(() => Object.values(myById), [myById])
   const yearOptions = useMemo(() => {
-    const ys = new Set<string>()
-    for (const a of list) if (a.year) ys.add(a.year)
+    const ys = new Set<number>()
+    for (const a of list) {
+      const y = primaryYear(a.year)
+      if (y) ys.add(y)
+    }
+    for (const a of myCatalog) {
+      const y = primaryYear(a.year)
+      if (y) ys.add(y)
+    }
     return [
       { value: 'all', label: '全部年份' },
-      ...[...ys].sort((x, y) => +y - +x).map((y) => ({ value: y, label: `${y} 年` }))
+      ...[...ys].sort((x, y) => y - x).map((y) => ({ value: String(y), label: `${y} 年` }))
     ]
-  }, [list])
+  }, [list, myCatalog])
 
-  // genre filter (from Bangumi tags; backfills gradually)
+  // genre filter (from Bangumi tags; backfills gradually) — anime1 only
   const genreOptions = useMemo(
     () => [{ value: 'all', label: '全部類型' }, ...genreList(list, meta).map((g) => ({ value: g, label: g }))],
     [list, meta]
   )
 
-  // combined year + genre browse (either or both)
+  // combined browse: year (both sources) + genre (anime1 only). When browsing by
+  // year alone, anime1 and myself are merged into one composite-sorted grid.
   const filtering = year !== 'all' || genre !== 'all'
-  const filteredItems = useMemo(() => {
+  const filteredItems = useMemo<(Anime | MyAnime)[]>(() => {
     if (!filtering) return []
-    let items = list
-    if (year !== 'all') items = items.filter((a) => a.year === year)
-    if (genre !== 'all') items = items.filter((a) => (meta[a.catId]?.tags || []).includes(genre))
-    return sortByScore(items, meta)
-  }, [filtering, year, genre, list, meta])
+    const y = year === 'all' ? 0 : +year
+    let a1 = list
+    if (y) a1 = a1.filter((a) => primaryYear(a.year) === y)
+    if (genre !== 'all') a1 = a1.filter((a) => (meta[a.catId]?.tags || []).includes(genre))
+    // myself has no genre tags, so only merge it for a pure year browse
+    const my = y && genre === 'all' ? myCatalog.filter((a) => primaryYear(a.year) === y) : []
+    const score = (it: Anime | MyAnime): number =>
+      'catId' in it ? weightedScore(meta[it.catId]) : weightedScoreMy(it)
+    return [...a1, ...my].sort((p, q) => score(q) - score(p))
+  }, [filtering, year, genre, list, meta, myCatalog])
 
   useEffect(() => {
     api.progressList().then(setProgress).catch(() => {})
@@ -68,11 +94,11 @@ export default function Home() {
     return () => clearInterval(t)
   }, [])
 
-  // Load the myself catalog only if the my-list has myself entries to render.
-  const hasMyselfInList = myList.some((id) => id.startsWith('my:'))
+  // Load the myself catalog (cached/no-op once loaded) so the unified year browse
+  // and the my-list row can render myself titles.
   useEffect(() => {
-    if (hasMyselfInList) loadMyCatalog()
-  }, [hasMyselfInList, loadMyCatalog])
+    loadMyCatalog()
+  }, [loadMyCatalog])
 
   // Group by season, then sort each season by rating (highest first).
   const groups = useMemo(() => {
@@ -175,6 +201,14 @@ export default function Home() {
             <h2 className="px-8 text-xl font-bold mb-3">
               {[genre !== 'all' ? genre : '', year !== 'all' ? `${year} 年` : ''].filter(Boolean).join(' · ')}
               {' 作品'} <span className="text-sm font-normal text-zinc-500">{filteredItems.length}</span>
+              {(() => {
+                const my = filteredItems.filter((it) => !('catId' in it)).length
+                return my > 0 ? (
+                  <span className="text-sm font-normal text-zinc-500">
+                    （anime1 {filteredItems.length - my} · Myself {my}）
+                  </span>
+                ) : null
+              })()}
             </h2>
             {filteredItems.length ? (
               <Grid items={filteredItems} />
