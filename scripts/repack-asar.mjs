@@ -5,7 +5,7 @@ import path from 'node:path'
 const require = createRequire(import.meta.url)
 const asar = require('@electron/asar')
 
-// Repo root = parent of bin/ (portable — no hard-coded machine path).
+// Repo root = parent of scripts/ (portable — no hard-coded machine path).
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const ASAR = path.join(ROOT, 'release/win-unpacked/resources/app.asar')
 const BAK = ASAR + '.bak'

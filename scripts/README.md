@@ -1,6 +1,12 @@
-# scripts/ — 開發 / QA 煙霧測試
+# scripts/ — 開發 / QA / 部署腳本
 
-非自動化測試，是開發時驅動真實來源 / 真實 app 來確認沒壞的工具腳本。
+非自動化測試，是開發時驅動真實來源 / 真實 app 來確認沒壞的工具腳本，外加一支部署腳本。
+
+## 部署
+
+| 腳本 | 做什麼 |
+|---|---|
+| `repack-asar.mjs` | 把 `npm run build` 的 `out/` 換進**既有**的 `release/win-unpacked/Anime1.exe`（繞過壞掉的 electron-builder）。一般直接用 `npm run deploy`（= build + 這支）。路徑以腳本上層為 repo root，與機器無關；需先 `npm run dist:dir` 產生過一次封裝。 |
 
 ## 爬蟲煙霧測試（直接連來源網站）
 

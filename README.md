@@ -31,8 +31,7 @@ electron-vite · Electron 31 (Node 20) · React 18 · React Router (HashRouter) 
 
 ```
 ANIME1/
-├─ bin/                操作腳本（建置後部署到已封裝 app）— 見 bin/README.md
-├─ scripts/            開發 / QA 煙霧測試（爬蟲、CDP 播放驗證）— 見 scripts/README.md
+├─ scripts/            開發 / QA 腳本（爬蟲煙霧、CDP 播放驗證、部署）— 見 scripts/README.md
 ├─ docs/               架構與設計文件
 │  └─ ARCHITECTURE.md  主行程 / 渲染端 / 資料流 / 串流機制詳解
 ├─ src/
@@ -46,7 +45,7 @@ ANIME1/
 └─ package.json
 ```
 
-建置產物 `out/`、安裝包 `release/`、`node_modules/` 皆已 `.gitignore`，不進版控。
+> **「app 本體」在哪？** 打包後的執行檔是 `release/win-unpacked/Anime1.exe`，由 `npm run dist:dir` 產生，屬**建置產物**（約 337MB）。它和 `out/`、`node_modules/` 一樣都 `.gitignore`、不進版控——要用就重新建置，不放進 repo。
 
 ---
 
@@ -74,10 +73,10 @@ npm run dist:dir    # 免安裝資料夾版（release/win-unpacked/）
 > 解法：把改動部署進**既有的** `release/win-unpacked/Anime1.exe`，**不重跑 electron-builder**：
 >
 > ```bash
-> npm run deploy      # = npm run build + node bin/repack-asar.mjs
+> npm run deploy      # = npm run build + node scripts/repack-asar.mjs
 > ```
 >
-> 細節見 [bin/README.md](bin/README.md)。
+> 細節見 [scripts/README.md](scripts/README.md)。
 
 ---
 
