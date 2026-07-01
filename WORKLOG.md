@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-06-29（第九輪）— 推薦少一點/含 myself + 跨來源去重 + 選擇片源
+
+三個回饋。
+
+### 一、「因為你看了」2 排就好
+`becauseYouWatched` 預設 `maxRows` 3→2。驗證：首頁剩 2 排。
+
+### 二、雙來源重複的動漫 → 合成一個 + 可切換片源
+- 新 `lib.ts` `titleCore(title)`：跨來源同作品辨識鍵（去括號英文、只留 CJK 核心、否則拉丁正規化；比 `franchiseKey` 嚴，**保留季數**，只併「同一部跨來源」不併不同季）。
+- **年份瀏覽去重**：myself 與 anime1 同 `titleCore` 的會被濾掉（**anime1 為主**）。驗證：2019 年 Myself 192→**106**（去掉 86 個重複）。
+- **選擇片源**：Detail（anime1）若該作在 myself 也有 → 顯示「⇄ 在 Myself 觀看」；MyselfDetail 反向顯示「⇄ 在 anime1 觀看」。各自用 `titleCore` 比對 myById / list。驗證：鑽石王牌 act2（anime1）有按鈕、大室家（myself）有反向按鈕。
+
+### 三、首頁推薦要有 myself
+- 新 `lib.ts` `recommendedUnified(list, meta, myCatalog)`：anime1 `recommendedPool` + myself 中**franchise 不與 anime1 重複**（anime1 為主）、votes≥150 的高分作品，合併後依綜合評分排序。
+- `sampleRecommended` 改泛型 `<T>`，可吃混合陣列。
+- `Home.tsx`：為你推薦列 + 輪播 Hero 都改用 `recoUnified`；Hero 依型別渲染 `<Hero>`(anime1) 或 `<MyHero>`(myself)。驗證：為你推薦 40 張含 ~22 張 myself（之前 0），且 franchise 去重無重複。
+
+### 四、移除 bin/（澄清）
+使用者本意是「app 放 bin」，但 app 本體是 `release/win-unpacked/Anime1.exe`（建置產物、git-ignore、不進 repo）。`bin/` 只放了部署腳本 `repack-asar.mjs`，那本就屬於 `scripts/`。故**移除 `bin/`**，`repack-asar.mjs` 移回 `scripts/`（路徑可攜，root = scripts 上層），更新 `package.json deploy`、README、scripts/README。
+
+---
+
 ## 2026-06-29（第八輪）— 年份瀏覽：修排序 + 正規化跨年份 + 整合雙來源
 
 回報：anime1 年份排序很怪、跨年份很複雜、且要分開找（anime1 / myself 各一）。

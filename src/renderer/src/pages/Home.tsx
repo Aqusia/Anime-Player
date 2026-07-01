@@ -8,13 +8,15 @@ import {
   genreList,
   groupBySeason,
   primaryYear,
-  recommendedPool,
+  recommendedUnified,
   sampleRecommended,
   sortByScore,
+  titleCore,
   weightedScore,
   weightedScoreMy
 } from '../lib'
 import Hero from '../components/Hero'
+import MyHero from '../components/MyHero'
 import Row from '../components/Row'
 import ContinueRow from '../components/ContinueRow'
 import Grid from '../components/Grid'
@@ -74,8 +76,14 @@ export default function Home() {
     let a1 = list
     if (y) a1 = a1.filter((a) => primaryYear(a.year) === y)
     if (genre !== 'all') a1 = a1.filter((a) => (meta[a.catId]?.tags || []).includes(genre))
-    // myself has no genre tags, so only merge it for a pure year browse
-    const my = y && genre === 'all' ? myCatalog.filter((a) => primaryYear(a.year) === y) : []
+    // myself has no genre tags, so only merge it for a pure year browse; and drop
+    // titles that also exist on anime1 (anime1 is the primary source) so the same
+    // show isn't listed twice.
+    const a1cores = new Set(a1.map((a) => titleCore(a.title)))
+    const my =
+      y && genre === 'all'
+        ? myCatalog.filter((a) => primaryYear(a.year) === y && !a1cores.has(titleCore(a.title)))
+        : []
     const score = (it: Anime | MyAnime): number =>
       'catId' in it ? weightedScore(meta[it.catId]) : weightedScoreMy(it)
     return [...a1, ...my].sort((p, q) => score(q) - score(p))
@@ -106,8 +114,9 @@ export default function Home() {
     return g.map((grp) => ({ ...grp, items: sortByScore(grp.items, meta) }))
   }, [list, meta])
 
-  // Global recommended picks: high score + high view count, reshuffled per seed.
-  const recoPool = useMemo(() => recommendedPool(list, meta), [list, meta])
+  // Recommended picks across BOTH sources (anime1 + myself-exclusive), reshuffled
+  // per seed. Drives 為你推薦 and the rotating hero.
+  const recoPool = useMemo(() => recommendedUnified(list, meta, myCatalog), [list, meta, myCatalog])
   const recommendedItems = useMemo(
     () => sampleRecommended(recoPool, 40, recoSeed),
     [recoPool, recoSeed]
@@ -160,12 +169,13 @@ export default function Home() {
   // Hero rotates through the top recommendations, preferring titles you haven't
   // watched (any progress OR manually marked 已看完). Falls back to all recos,
   // then to continue-watching / latest before metadata produces recommendations.
+  const keyOf = (it: Anime | MyAnime): string => ('catId' in it ? it.catId : `my:${it.id}`)
   const seen = new Set<string>([...progress.map((p) => p.catId), ...watched])
-  const unseenReco = recoPool.filter((a) => !seen.has(a.catId))
+  const unseenReco = recoPool.filter((it) => !seen.has(keyOf(it)))
   const basePool = unseenReco.length ? unseenReco : recoPool
-  const heroPool = basePool.length
+  const heroPool: (Anime | MyAnime)[] = basePool.length
     ? basePool.slice(0, 12)
-    : ([(continueWatching[0] && byId[continueWatching[0].catId]) || latest[0]].filter(Boolean) as typeof list)
+    : ([(continueWatching[0] && byId[continueWatching[0].catId]) || latest[0]].filter(Boolean) as (Anime | MyAnime)[])
   const hero = heroPool.length ? heroPool[heroIdx % heroPool.length] : undefined
 
   return (
@@ -175,7 +185,7 @@ export default function Home() {
           onMouseEnter={() => (heroPausedRef.current = true)}
           onMouseLeave={() => (heroPausedRef.current = false)}
         >
-          <Hero key={hero.catId} anime={hero} />
+          {'catId' in hero ? <Hero key={hero.catId} anime={hero} /> : <MyHero key={hero.id} a={hero} />}
         </div>
       )}
       <div className="-mt-12 relative z-10">

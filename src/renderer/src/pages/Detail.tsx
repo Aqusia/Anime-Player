@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useStore } from '../store'
 import { api, type BgmEp, type Episode, type EpDownload, type Meta, type Progress } from '../api'
-import { franchiseKey, timeAgo, heatScore, relatedAnime } from '../lib'
+import { franchiseKey, timeAgo, heatScore, relatedAnime, titleCore } from '../lib'
 import Card from '../components/Card'
 import HoverPreview from '../components/HoverPreview'
 
@@ -82,8 +82,19 @@ export default function Detail() {
   const nav = useNavigate()
   const { byId, list, myList, watched, toggleMy, toggleWatched, loaded, load } = useStore()
   const metaMap = useStore((s) => s.meta)
+  const myById = useStore((s) => s.myById)
+  const loadMyCatalog = useStore((s) => s.loadMyCatalog)
   const downloads = useStore((s) => (catId ? s.downloads[catId] : undefined))
   const anime = catId ? byId[catId] : undefined
+
+  // same show on the myself source? (lets the user switch 片源)
+  useEffect(() => {
+    loadMyCatalog()
+  }, [loadMyCatalog])
+  const myMatch = useMemo(() => {
+    const c = anime ? titleCore(anime.title) : ''
+    return c ? Object.values(myById).find((m) => titleCore(m.title) === c) : undefined
+  }, [myById, anime])
 
   const [meta, setMeta] = useState<Meta | null>(null)
   const [eps, setEps] = useState<Episode[] | null>(null)
@@ -246,6 +257,15 @@ export default function Detail() {
               >
                 {isWatched ? '✓ 已看完' : '標記已看完'}
               </button>
+              {myMatch && (
+                <button
+                  onClick={() => nav(`/myself/anime/${myMatch.id}`, { state: { title: myMatch.title } })}
+                  title="這部在 Myself 也有，切換片源"
+                  className="bg-emerald-600/20 text-emerald-300 px-5 py-2.5 rounded hover:bg-emerald-600/30"
+                >
+                  ⇄ 在 Myself 觀看
+                </button>
+              )}
               {downloading ? (
                 <div className="flex items-center gap-2 bg-white/10 px-4 py-2.5 rounded">
                   <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

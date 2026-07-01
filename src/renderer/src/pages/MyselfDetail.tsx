@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { api, type BgmEp, type EpDownload, type MyDetails, type MyEpisode, type Progress } from '../api'
 import { useStore } from '../store'
-import { franchiseKey, heatScore, relatedMy, timeAgo } from '../lib'
+import { franchiseKey, heatScore, relatedMy, timeAgo, titleCore } from '../lib'
 import HoverPreview from '../components/HoverPreview'
 import MyCard from '../components/MyCard'
 
@@ -86,6 +86,7 @@ export default function MyselfDetail() {
   const toggleMy = useStore((s) => s.toggleMy)
   const watched = useStore((s) => s.watched)
   const toggleWatched = useStore((s) => s.toggleWatched)
+  const a1List = useStore((s) => s.list)
   const myById = useStore((s) => s.myById)
   const loadMyCatalog = useStore((s) => s.loadMyCatalog)
   const inList = myList.includes(`my:${id}`)
@@ -149,6 +150,12 @@ export default function MyselfDetail() {
   const cover = det?.cover || st?.cover
   const eps = det?.episodes || []
   const play = (vid: string) => nav(`/watch/my/${id}/${vid}`, { state: { title, cover } })
+
+  // same show on the anime1 (primary) source? lets the user switch 片源
+  const a1Match = useMemo(() => {
+    const c = titleCore(title)
+    return c ? a1List.find((a) => titleCore(a.title) === c) : undefined
+  }, [a1List, title])
 
   // 綜合評分 from router state (came from a card) or the cached catalog (direct visit)
   const self = myById[id]
@@ -243,6 +250,15 @@ export default function MyselfDetail() {
               >
                 {isWatched ? '✓ 已看完' : '標記已看完'}
               </button>
+              {a1Match && (
+                <button
+                  onClick={() => nav(`/anime/${a1Match.catId}`)}
+                  title="這部在 anime1 也有（主來源），切換片源"
+                  className="bg-white/20 px-5 py-2.5 rounded hover:bg-white/30"
+                >
+                  ⇄ 在 anime1 觀看
+                </button>
+              )}
               {downloading ? (
                 <div className="flex items-center gap-2 bg-white/10 px-4 py-2.5 rounded">
                   <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

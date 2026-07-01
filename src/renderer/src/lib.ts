@@ -128,6 +128,50 @@ export function recommendedPool(
   return out
 }
 
+/**
+ * Cross-SOURCE identity key — detects the SAME anime appearing on both anime1
+ * and myself. Uses the CJK-only core (parenthetical English dropped), else a
+ * latin-normalized fallback. Stricter than franchiseKey (keeps season markers),
+ * so it merges "the same show across sources" without merging different seasons.
+ */
+export function titleCore(title: string): string {
+  const noParen = title.replace(/[（(【[][^）)】\]]*[）)】\]]/g, ' ')
+  const cjk = noParen.replace(/[^㐀-鿿豈-﫿]/g, '')
+  if (cjk.length >= 2) return cjk
+  return noParen.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+/**
+ * Unified recommendation pool across BOTH sources: anime1's recommendedPool plus
+ * the top myself titles that AREN'T already on anime1 (anime1 is the primary
+ * source for any show on both), merged and composite-sorted. So 為你推薦 / hero
+ * surface myself-exclusive popular shows too.
+ */
+export function recommendedUnified(
+  list: Anime[],
+  meta: Record<string, MetaLite>,
+  myCatalog: MyAnime[],
+  minVotes = 150
+): (Anime | MyAnime)[] {
+  const a1 = recommendedPool(list, meta, minVotes)
+  // franchise-level dedup across sources: a series anime1 already recommends
+  // shouldn't reappear from myself (anime1 is primary). recommendedPool already
+  // collapsed anime1 franchises, so only myself-EXCLUSIVE franchises are added.
+  const seenFk = new Set<string>(a1.map((a) => franchiseKey(a.title)))
+  const myPool: MyAnime[] = []
+  for (const a of myCatalog
+    .filter((a) => (a.score || 0) > 0 && (a.votes || 0) >= minVotes)
+    .sort((x, y) => weightedScoreMy(y) - weightedScoreMy(x))) {
+    const fk = franchiseKey(a.title)
+    if (seenFk.has(fk)) continue
+    seenFk.add(fk)
+    myPool.push(a)
+  }
+  const score = (it: Anime | MyAnime): number =>
+    'catId' in it ? weightedScore(meta[it.catId]) : weightedScoreMy(it)
+  return [...a1, ...myPool].sort((p, q) => score(q) - score(p))
+}
+
 // small seeded RNG (mulberry32) so a given seed yields a stable shuffle
 function rng(seed: number): () => number {
   let s = seed >>> 0 || 1
@@ -144,11 +188,11 @@ function rng(seed: number): () => number {
  * (higher score) titles are more likely, so results stay score-primary but
  * vary each refresh (driven by `seed`).
  */
-export function sampleRecommended(pool: Anime[], n: number, seed: number): Anime[] {
+export function sampleRecommended<T>(pool: T[], n: number, seed: number): T[] {
   const window = pool.slice(0, Math.max(n * 3, 120))
   const bag = window.map((a, i) => ({ a, w: window.length - i }))
   const rand = rng(seed)
-  const picked: Anime[] = []
+  const picked: T[] = []
   while (picked.length < n && bag.length) {
     let total = 0
     for (const o of bag) total += o.w
@@ -260,7 +304,7 @@ export function becauseYouWatched(
   list: Anime[],
   byId: Record<string, Anime>,
   meta: Record<string, MetaLite>,
-  maxRows = 3
+  maxRows = 2
 ): { seed: Anime; items: Anime[] }[] {
   const seen = new Set<string>([...progress.map((p) => p.catId), ...watched])
   const rows: { seed: Anime; items: Anime[] }[] = []
