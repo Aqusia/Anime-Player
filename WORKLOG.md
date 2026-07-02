@@ -24,6 +24,7 @@ myself-bbs 憑證鏈含跨簽 CA(Root YE→ISRG),Node OpenSSL 建不出路徑(`U
 
 ### 驗證
 `tsc --noEmit` 零錯、`npm run build` ✅、`npm run verify` ✅ 15/15、`npm run smoke`/`smoke:my` ✅。
+新增 `npm run verify:persist`(`scripts/persist-verify.mjs`):writer 子進程同步寫入後 `SIGKILL` 硬殺,全新進程讀回 → 證明同步寫入撐過「未關機」。實機 `npm run dev` 開機正常(myself 索引 2356 部載入、無錯誤),三層 bundle 皆含新 IPC 頻道。
 
 ---
 

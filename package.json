@@ -13,7 +13,8 @@
     "deploy": "electron-vite build && node scripts/repack-asar.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:my": "node scripts/my-smoke.cjs",
-    "verify": "node scripts/lib-verify.mjs"
+    "verify": "node scripts/lib-verify.mjs",
+    "verify:persist": "node scripts/persist-verify.mjs"
   },
   "dependencies": {
     "cheerio": "^1.0.0-rc.12",
