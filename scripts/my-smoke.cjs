@@ -8,14 +8,30 @@ const MY_HOST = 'www.myself-bbs.com'
 const MY_ORIGIN = 'https://' + MY_HOST
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36'
 
+// myself-bbs's cert chain includes a cross-signed CA (Root YE → ISRG) that Node's
+// OpenSSL can't build a path for (UNABLE_TO_GET_ISSUER_CERT), even though Chromium —
+// and therefore the real Electron app — verifies it fine via the OS trust store.
+// This is a *diagnostic* of the scraping logic, not a TLS check, so on a cert-chain
+// error we transparently retry with verification relaxed (warn once). Force it
+// up-front with SMOKE_INSECURE=1.
+const CERT_ERRORS = new Set(['UNABLE_TO_GET_ISSUER_CERT', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'SELF_SIGNED_CERT_IN_CHAIN', 'CERT_UNTRUSTED', 'DEPTH_ZERO_SELF_SIGNED_CERT'])
+let insecure = process.env.SMOKE_INSECURE === '1'
+function onReqError(e, reject) {
+  if (e && CERT_ERRORS.has(e.code) && !insecure) {
+    insecure = true
+    console.warn(`⚠ TLS chain not verifiable by Node (${e.code}); retrying with verification relaxed — diagnostic only, the app verifies fine via the OS trust store.`)
+  }
+  reject(e)
+}
+
 function getHtmlOnce(path) {
   return new Promise((resolve, reject) => {
-    const req = https.request({ hostname: MY_HOST, path, family: 4, timeout: 20000, headers: { 'User-Agent': UA, 'Accept-Language': 'zh-TW' } }, (r) => {
+    const req = https.request({ hostname: MY_HOST, path, family: 4, timeout: 20000, rejectUnauthorized: !insecure, headers: { 'User-Agent': UA, 'Accept-Language': 'zh-TW' } }, (r) => {
       if ((r.statusCode || 0) >= 400) { r.resume(); return reject(new Error('HTTP ' + r.statusCode)) }
       let d = ''; r.setEncoding('utf8'); r.on('data', (c) => (d += c)); r.on('end', () => resolve(d))
     })
     req.on('timeout', () => { req.destroy(); reject(new Error('timeout')) })
-    req.on('error', reject); req.end()
+    req.on('error', (e) => onReqError(e, reject)); req.end()
   })
 }
 async function getHtml(p) { let e; for (let i = 0; i < 5; i++) { if (i) await new Promise((r) => setTimeout(r, 600 * i)); try { return await getHtmlOnce(p) } catch (x) { e = x } } throw e }
@@ -24,22 +40,22 @@ const abs = (s) => { try { return new URL((s || '').trim(), MY_ORIGIN + '/').hre
 function getUrl(url) {
   return new Promise((resolve, reject) => {
     const u = new URL(url)
-    const req = https.request({ hostname: u.hostname, path: u.pathname + u.search, family: 4, timeout: 15000, headers: { 'User-Agent': UA } }, (r) => {
+    const req = https.request({ hostname: u.hostname, path: u.pathname + u.search, family: 4, timeout: 15000, rejectUnauthorized: !insecure, headers: { 'User-Agent': UA } }, (r) => {
       if ((r.statusCode || 0) >= 400) { r.resume(); return reject(new Error('HTTP ' + r.statusCode)) }
       let d = ''; r.setEncoding('utf8'); r.on('data', (c) => (d += c)); r.on('end', () => resolve(d))
     })
     req.on('timeout', () => { req.destroy(); reject(new Error('timeout')) })
-    req.on('error', reject); req.end()
+    req.on('error', (e) => onReqError(e, reject)); req.end()
   })
 }
 
 function resolveWs(tid, vid) {
   return new Promise((resolve, reject) => {
     const key = crypto.randomBytes(16).toString('base64')
-    const req = https.request({ hostname: 'v.myself-bbs.com', path: '/ws', family: 4, timeout: 12000, headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Key': key, 'Sec-WebSocket-Version': '13', Origin: 'https://v.myself-bbs.com', 'User-Agent': 'Mozilla/5.0' } })
+    const req = https.request({ hostname: 'v.myself-bbs.com', path: '/ws', family: 4, timeout: 12000, rejectUnauthorized: !insecure, headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Key': key, 'Sec-WebSocket-Version': '13', Origin: 'https://v.myself-bbs.com', 'User-Agent': 'Mozilla/5.0' } })
     let done = false; const fin = (e, v) => { if (done) return; done = true; e ? reject(e) : resolve(v) }
     req.on('timeout', () => { req.destroy(); fin(new Error('ws timeout')) })
-    req.on('error', fin); req.on('response', () => fin(new Error('upgrade rejected')))
+    req.on('error', (e) => onReqError(e, fin)); req.on('response', () => fin(new Error('upgrade rejected')))
     req.on('upgrade', (_r, sock) => {
       // numeric vid = old format {tid,vid}; otherwise vid is the opaque token → {id}
       const payload = /^\d+$/.test(vid) ? { tid, vid, id: '' } : { tid: '', vid: '', id: vid }
