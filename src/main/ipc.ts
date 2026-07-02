@@ -118,4 +118,10 @@ export function registerIpc(): void {
     db.setWatched(next)
     return next
   })
+
+  // ---- UI prefs + search history (durable mirror of renderer localStorage) ----
+  ipcMain.handle('prefs:get', () => db.getPrefs())
+  ipcMain.handle('prefs:set', (_e, p: { volume?: number; rate?: number }) => db.setPrefs(p))
+  ipcMain.handle('searchHistory:get', () => db.getSearchHistory())
+  ipcMain.handle('searchHistory:set', (_e, list: string[]) => db.setSearchHistory(list))
 }

@@ -71,6 +71,25 @@ export const db = {
     dataStore.set('downloads', d)
   },
 
+  // ---- UI prefs (volume / rate) — durable mirror of the renderer's localStorage.
+  // localStorage can lose recent writes on an unclean exit; electron-store's set is
+  // a synchronous atomic write, so this copy survives. See renderer/playerPrefs.ts.
+  getPrefs(): { volume?: number; rate?: number } {
+    return dataStore.get('prefs', {}) as { volume?: number; rate?: number }
+  },
+  setPrefs(partial: { volume?: number; rate?: number }): void {
+    const cur = dataStore.get('prefs', {}) as { volume?: number; rate?: number }
+    dataStore.set('prefs', { ...cur, ...partial })
+  },
+
+  // ---- search history — durable mirror of the renderer's localStorage ----
+  getSearchHistory(): string[] {
+    return dataStore.get('searchHistory', []) as string[]
+  },
+  setSearchHistory(list: string[]): void {
+    dataStore.set('searchHistory', list)
+  },
+
   // ---- metadata (in-memory + batched persistence) ----
   getMeta(catId: string): Meta | undefined {
     return ensureMeta()[catId]

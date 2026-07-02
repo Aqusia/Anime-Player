@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-07-02（第十一輪）— 持久化:紀錄不因關機遺失 + smoke:my TLS
+
+回報「很多紀錄會因未關機不見」。查證結論:**一半是真的**。
+
+### 調查（實證)
+- **electron-store(進度/我的清單/已看完/下載)**:`.set()` 是 `atomically.writeFileSync` **同步原子寫**,已提交的不會因中斷/關機大量遺失或毀損。實讀 `%APPDATA%\anime1-netflix\anime1-data.json` → 31 筆進度、20 部、橫跨 6/26–6/29,都在。中斷最多掉「正在寫的那一筆」。遺留 `.tmp-*` 是中斷寫入的無害殘留(原子 rename 保護主檔)。
+- **localStorage(搜尋紀錄 / 音量 / 播放速度)**:Chromium 延遲寫盤,未正常關閉會掉最近寫入。**這才是會掉的部分**。
+
+### 修法:dual-write + 開機對帳(讓 localStorage 那三項也永久)
+localStorage 續當同步讀取快取(Player 同步讀音量/速度、Nav/Search 同步讀歷史,consumer 全不動),但**每次寫入同步鏡寫 electron-store**,開機時 `reconcilePrefs()` / `reconcileSearchHistory()` 從 electron-store 拉回 localStorage(electron-store 為準)。任何關機情境都不再遺失。
+- 主:`store.ts` `getPrefs/setPrefs/getSearchHistory/setSearchHistory`;`ipc.ts` 四個 handler(`prefs:*`、`searchHistory:*`)。
+- 橋:`preload/index.ts` + `api.ts` 型別四支。
+- renderer:`playerPrefs.ts`、`searchHistory.ts` 改雙寫 + reconcile;`App.tsx` 開機呼叫。
+
+### smoke:my TLS(先前的「try」)
+myself-bbs 憑證鏈含跨簽 CA(Root YE→ISRG),Node OpenSSL 建不出路徑(`UNABLE_TO_GET_ISSUER_CERT`),Chromium/app 用系統信任庫則正常。`my-smoke.cjs` 改為遇憑證鏈錯誤透明放寬驗證重試、警告一次(`SMOKE_INSECURE=1` 可強制)。三個請求點一致處理 → **全綠**。
+
+### 驗證
+`tsc --noEmit` 零錯、`npm run build` ✅、`npm run verify` ✅ 15/15、`npm run smoke`/`smoke:my` ✅。
+
+---
+
 ## 2026-07-02（第十輪）— 測試驗證與修正
 
 第九輪跨來源整合提交後,做建置驗證與優化。

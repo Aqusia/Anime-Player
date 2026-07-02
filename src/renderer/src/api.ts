@@ -150,6 +150,10 @@ interface Api {
   watchedGet: () => Promise<string[]>
   watchedToggle: (catId: string) => Promise<string[]>
   watchedMark: (catId: string) => Promise<string[]>
+  prefsGet: () => Promise<{ volume?: number; rate?: number }>
+  prefsSet: (p: { volume?: number; rate?: number }) => Promise<void>
+  searchHistoryGet: () => Promise<string[]>
+  searchHistorySet: (list: string[]) => Promise<void>
 }
 
 export const api = (window as unknown as { api: Api }).api

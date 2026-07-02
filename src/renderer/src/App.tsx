@@ -3,6 +3,8 @@ import { Outlet, useLocation, useNavigationType } from 'react-router-dom'
 import Nav from './components/Nav'
 import { useStore } from './store'
 import { api } from './api'
+import { reconcilePrefs } from './playerPrefs'
+import { reconcileSearchHistory } from './searchHistory'
 
 export default function App() {
   const load = useStore((s) => s.load)
@@ -42,6 +44,10 @@ export default function App() {
     loadMeta()
     loadDownloads()
     loadProgress()
+    // restore durable copies of volume/rate + search history into localStorage
+    // (they may have been lost from localStorage on an unclean exit last session)
+    void reconcilePrefs()
+    void reconcileSearchHistory()
     // refresh progress when the window regains focus (e.g. after watching)
     const onFocus = (): void => void loadProgress()
     window.addEventListener('focus', onFocus)

@@ -43,7 +43,11 @@ const api = {
   toggleMyList: (catId: string) => ipcRenderer.invoke('mylist:toggle', catId),
   watchedGet: () => ipcRenderer.invoke('watched:get'),
   watchedToggle: (catId: string) => ipcRenderer.invoke('watched:toggle', catId),
-  watchedMark: (catId: string) => ipcRenderer.invoke('watched:mark', catId)
+  watchedMark: (catId: string) => ipcRenderer.invoke('watched:mark', catId),
+  prefsGet: () => ipcRenderer.invoke('prefs:get'),
+  prefsSet: (p: { volume?: number; rate?: number }) => ipcRenderer.invoke('prefs:set', p),
+  searchHistoryGet: () => ipcRenderer.invoke('searchHistory:get'),
+  searchHistorySet: (list: string[]) => ipcRenderer.invoke('searchHistory:set', list)
 }
 
 contextBridge.exposeInMainWorld('api', api)
