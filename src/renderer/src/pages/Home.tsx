@@ -79,10 +79,16 @@ export default function Home() {
     // myself has no genre tags, so only merge it for a pure year browse; and drop
     // titles that also exist on anime1 (anime1 is the primary source) so the same
     // show isn't listed twice.
-    const a1cores = new Set(a1.map((a) => titleCore(a.title)))
+    // empty core = "no identity" (pure-symbol title); never dedup on it, matching
+    // the `c ? … : undefined` guard in Detail/MyselfDetail.
+    const a1cores = new Set(a1.map((a) => titleCore(a.title)).filter(Boolean))
     const my =
       y && genre === 'all'
-        ? myCatalog.filter((a) => primaryYear(a.year) === y && !a1cores.has(titleCore(a.title)))
+        ? myCatalog.filter((a) => {
+            if (primaryYear(a.year) !== y) return false
+            const c = titleCore(a.title)
+            return !c || !a1cores.has(c)
+          })
         : []
     const score = (it: Anime | MyAnime): number =>
       'catId' in it ? weightedScore(meta[it.catId]) : weightedScoreMy(it)

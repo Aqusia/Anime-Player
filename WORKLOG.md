@@ -5,6 +5,24 @@
 
 ---
 
+## 2026-07-02（第十輪）— 測試驗證與修正
+
+第九輪跨來源整合提交後,做建置驗證與優化。
+
+### 一、新增純函式驗證 `scripts/lib-verify.mjs`（`npm run verify`）
+`lib.ts` 只 `import type`(編譯期抹除),故可用 esbuild `transform` 轉譯後**直接測真正的函式**,不需網路(有別於 `smoke.mjs` / `my-smoke.cjs` 打 live 站台)。涵蓋 `titleCore`(跨來源辨識、季數區分、空核心邊界)、`recommendedUnified`(franchise 去重 / votes 門檻 / 排序)、泛型 `sampleRecommended`(混合陣列 / 同 seed 穩定)。15/15 通過。
+
+### 二、Home 空核心去重防呆
+純符號標題 `titleCore` 回 `''`,原年份去重 Set 會把兩個空核心誤當同一部。Detail/MyselfDetail 早已用 `c ? … : undefined` 防呆,這裡補齊三處一致(中文標題實務不會空,屬 hardening)。
+
+### 三、修正 Player PiP 事件(連帶真 bug)
+`onEnterPictureInPicture` / `onLeavePictureInPicture` **不在 React 合成事件集**,JSX prop 會被靜默忽略 → `setIsPiP` 執行期從未觸發,子母畫面按鈕高亮狀態不會亮。改用 `videoRef` 掛原生 `enterpictureinpicture` / `leavepictureinpicture` 監聽(deps `[src]`,隨 video 重掛)。順帶消除唯一的 `tsc` 型別錯誤 → 現在 `tsc --noEmit` 全綠。
+
+### 驗證結果
+`tsc` 零錯、`npm run build` ✅、`npm run smoke`(anime1)✅ 1844 部、`npm run verify` ✅ 15/15。(`smoke:my` 因本機 TLS 憑證鏈環境問題失敗,非程式碼;app 走 Chromium 憑證庫不受影響。)
+
+---
+
 ## 2026-06-29（第九輪）— 推薦少一點/含 myself + 跨來源去重 + 選擇片源
 
 三個回饋。

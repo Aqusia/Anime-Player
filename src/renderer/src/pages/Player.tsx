@@ -355,6 +355,21 @@ export default function Player() {
     }
   }, [])
 
+  // PiP events aren't in React's synthetic event set — a JSX onEnterPictureInPicture
+  // prop is silently ignored — so attach them to the element imperatively.
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v) return
+    const onEnter = () => setIsPiP(true)
+    const onLeave = () => setIsPiP(false)
+    v.addEventListener('enterpictureinpicture', onEnter)
+    v.addEventListener('leavepictureinpicture', onLeave)
+    return () => {
+      v.removeEventListener('enterpictureinpicture', onEnter)
+      v.removeEventListener('leavepictureinpicture', onLeave)
+    }
+  }, [src])
+
   const toggleMute = () => {
     const v = videoRef.current
     if (!v) return
@@ -457,8 +472,6 @@ export default function Player() {
           onPlaying={() => setBuffering(false)}
           onCanPlay={() => setBuffering(false)}
           onEnded={onEnded}
-          onEnterPictureInPicture={() => setIsPiP(true)}
-          onLeavePictureInPicture={() => setIsPiP(false)}
           onVolumeChange={() => {
             const v = videoRef.current
             if (v) setMuted(v.muted)
