@@ -39,21 +39,24 @@ export default function Home() {
   const metaStatus = useStore((s) => s.metaStatus)
   const error = useStore((s) => s.error)
   const load = useStore((s) => s.load)
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const [progress, setProgress] = useState<Progress[]>([])
   const [visible, setVisible] = useState(PAGE)
   const [recoSeed, setRecoSeed] = useState(1)
   const [heroIdx, setHeroIdx] = useState(0)
-  const [year, setYear] = useState('all')
-  const [genre, setGenre] = useState(params.get('genre') || 'all')
   const sentinel = useRef<HTMLDivElement>(null)
   const heroPausedRef = useRef(false) // pause hero rotation while hovering it
 
-  // let a ?genre= link (e.g. clicking a genre chip on a detail page) drive the filter
-  useEffect(() => {
-    const g = params.get('genre')
-    if (g) setGenre(g)
-  }, [params])
+  // year/genre filters live in the URL (?year=&genre=) so coming back from a
+  // detail page — or a genre chip link — lands on the same filtered view.
+  const year = params.get('year') || 'all'
+  const genre = params.get('genre') || 'all'
+  const setFilter = (key: 'year' | 'genre', v: string): void => {
+    const p = new URLSearchParams(params)
+    if (v === 'all') p.delete(key)
+    else p.set(key, v)
+    setParams(p)
+  }
 
   // year filter — UNIFIED across both sources, normalized to the primary year
   // (cross-year "2019/2020" buckets under 2019; myself years included too).
@@ -250,16 +253,10 @@ export default function Home() {
       <div className="-mt-12 relative z-10">
         <div className="px-8 mb-5 flex items-center gap-3 flex-wrap">
           <span className="text-sm text-zinc-400">瀏覽</span>
-          <Dropdown value={year} options={yearOptions} onChange={setYear} />
-          <Dropdown value={genre} options={genreOptions} onChange={setGenre} />
+          <Dropdown value={year} options={yearOptions} onChange={(v) => setFilter('year', v)} />
+          <Dropdown value={genre} options={genreOptions} onChange={(v) => setFilter('genre', v)} />
           {filtering && (
-            <button
-              onClick={() => {
-                setYear('all')
-                setGenre('all')
-              }}
-              className="text-xs text-zinc-400 hover:text-white"
-            >
+            <button onClick={() => setParams({})} className="text-xs text-zinc-400 hover:text-white">
               清除篩選
             </button>
           )}

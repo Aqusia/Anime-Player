@@ -27,7 +27,7 @@ release/win-unpacked/Anime1.exe --remote-debugging-port=9222
 
 | 腳本 | 測什麼 |
 |---|---|
-| `cdp-ux-smoke.mjs` | 介面/播放器 UX 冒煙：首頁卡片與封面淡入、skeleton、回到頂部、`/` 搜尋聚焦、播放器 OSD 與 M/S/數字快捷鍵、離開播放器立即存進度。視窗被遮蔽會使捲動類檢查失敗，啟動時加 `--disable-features=CalculateNativeWinOcclusion` |
+| `cdp-ux-smoke.mjs` | 介面/播放器 UX 冒煙：首頁卡片與封面淡入、skeleton、回到頂部、`/` 搜尋聚焦、播放器 OSD 與 M/數字快捷鍵、選集抽屜（E 開啟/全集列出/現集高亮/Esc 關閉）、MediaSession 中繼資料、離開播放器立即存進度。視窗被遮蔽會使捲動類檢查被跳過，啟動時加 `--disable-features=CalculateNativeWinOcclusion` |
 | `cdp-my-test.mjs` | myself 詳情頁載入 + 集數 + 播放 |
 | `cdp-dl-test.mjs` | 離線下載端到端（下載 → 落地檔案 → 離線播放） |
 

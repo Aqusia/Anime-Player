@@ -29,6 +29,17 @@ export const db = {
     dataStore.set('listCache', { fetchedAt: Date.now(), data })
   },
 
+  // ---- window state (size / position / maximized), restored on next launch ----
+  getWinState(): { bounds?: { x: number; y: number; width: number; height: number }; maximized?: boolean } {
+    return dataStore.get('winState', {}) as {
+      bounds?: { x: number; y: number; width: number; height: number }
+      maximized?: boolean
+    }
+  },
+  setWinState(s: { bounds: { x: number; y: number; width: number; height: number }; maximized: boolean }): void {
+    dataStore.set('winState', s)
+  },
+
   // ---- my list ----
   getMyList(): string[] {
     return dataStore.get('myList', []) as string[]

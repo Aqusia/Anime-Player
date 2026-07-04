@@ -5,6 +5,30 @@
 
 ---
 
+## 2026-07-04（第十三輪）— 移除跳OP + 選集抽屜 / 系統媒體鍵 / 視窗記憶 / 首頁秒開
+
+使用者回饋:固定 +90 秒的「跳OP」太笨(智慧跳OP需要章節資料,來源沒有)→ **整個移除**(按鈕 + S 鍵),改做其他更有價值的。
+
+### 一、播放器內「選集」抽屜(Player.tsx)
+不用退出播放器就能跳任意一集。控制列新增清單鈕(多於 1 集才顯示)/快捷鍵 `E`;右側抽屜列出全部集數,**現正播放高亮**、看過的集顯示 ✓看完 或 N%(開啟時抓一次 `progressList` 過濾本作)、開啟時自動捲到當前集(`curEpRef.scrollIntoView`)。點外面透明層或 `Esc` 關閉(Esc 順序:選集 → 速度選單 → 返回);面板開著時控制列不自動隱藏(`epPanelRef` 加進 revealUI 守門);換集自動關。
+
+### 二、系統媒體整合 MediaSession(Player.tsx)
+Windows 媒體浮層(音量鍵旁)顯示**片名+集數+封面**;鍵盤媒體鍵可播放/暫停,上一首/下一首 = 上下集,seekforward/backward=±10s、seekto=拖曳。三個 effect:metadata(anime1 集標題已含片名 → `epLabel.includes(title)` 時不重複拼接;封面 anime1 取 `meta[animeId].cover`、myself 用 cover)、action handlers(deps [prevEp,nextEp,go],unmount 全部置 null)、playbackState 同步。
+
+### 三、視窗大小/位置/最大化記憶(main/index.ts + store.ts)
+原本每次啟動固定 1360×860。`db.get/setWinState`(dataStore `winState` key);resize/move/maximize/unmaximize 事件 500ms debounce 存 `getNormalBounds()`(最大化時仍記住底下的還原尺寸)+ `isMaximized`。啟動還原,**先驗證儲存位置仍在任一螢幕上**(±40px 交集,拔掉外接螢幕不會開到畫面外),否則只用尺寸。驗證:Win32 MoveWindow 移到 111,77/1234×777 → store 存 99,68/1103×695(DIP,DPI 縮放差)→ 重啟還原誤差 1px ✓。
+
+### 四、首頁秒開:anime1 列表 stale-while-revalidate(anime1/service.ts)
+原本快取 12h TTL 過期時**同步重爬整個列表、首頁卡在載入**。改成:只要有快取就立刻回傳,過期時背景刷新(`refreshing` promise 去重)下次讀取生效。詳情/集數本來就是即時抓,列表稍舊無感;`force`(重試鈕)仍同步重抓。
+
+### 五、首頁篩選寫進 URL(Home.tsx)
+年份/類型原是 component state,進詳情頁返回就消失。改由 `?year=&genre=` 驅動(單一事實來源,`setFilter` 寫 params、清除篩選=`setParams({})`),返回/前進都保留;Detail 的類型 chip 連到 `/?genre=X` 天然相容。
+
+### 驗證
+`tsc` 零錯、build ✅;smoke 測試更新(移除跳OP檢查,加 MediaSession/選集抽屜三項、exit-flush seek 目標改片長 70%——之前寫死 123s 遇到 90 秒短片會夾到結尾誤判、視窗遮蔽時捲動類檢查改跳過並提示)→ dev 版與**打包版皆 17/17 全過**(選集實測 28 集、高亮、Esc;MediaSession 標題不重複)。視窗記憶用 Win32 MoveWindow + 重啟實測還原。已 `npm run deploy`。
+
+---
+
 ## 2026-07-04（第十二輪）— 全面 UX 打磨:操作回饋 / 感知速度 / 效能 / 舒適度
 
 使用者要求「盡可能優化使用感受、介面、速度、舒適度」。四個方向,全部實機驗證。

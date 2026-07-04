@@ -15,7 +15,8 @@ const Icon = {
   volume: <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2a4.5 4.5 0 00-2.5-4v8a4.5 4.5 0 002.5-4z" /></svg>,
   mute: <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M3 10v4h4l5 5V5L7 10H3zm13 1.5l2.5-2.5 1 1L17 12.5l2.5 2.5-1 1L16 13.5 13.5 16l-1-1 2.5-2.5L12.5 10l1-1L16 11.5z" /></svg>,
   fullscreen: <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" /></svg>,
-  pip: <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.98h18v14.03z" /></svg>
+  pip: <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.98h18v14.03z" /></svg>,
+  list: <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M4 6h2v2H4zM4 11h2v2H4zM4 16h2v2H4zM8 6h12v2H8zM8 11h12v2H8zM8 16h12v2H8z" /></svg>
 }
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2]
@@ -36,6 +37,7 @@ export default function Player() {
   const notePlayed = useStore((s) => s.notePlayed)
   const myById = useStore((s) => s.myById)
   const loadMyCatalog = useStore((s) => s.loadMyCatalog)
+  const metaCover = useStore((s) => (source === 'my' ? undefined : s.meta[animeId]?.cover))
   const [myTitle, setMyTitle] = useState('')
   const [myCover, setMyCover] = useState('')
   const st = loc.state as { title?: string; cover?: string } | null
@@ -70,6 +72,8 @@ export default function Player() {
   // transient on-screen feedback for keyboard/wheel actions (seek/volume/speed);
   // `n` bumps so repeating the same action re-triggers the flash animation
   const [osd, setOsd] = useState<{ text: string; n: number } | null>(null)
+  const [epPanel, setEpPanel] = useState(false) // in-player 選集 drawer
+  const [epProg, setEpProg] = useState<Record<string, number>>({}) // postId → watched %
 
   const idx = eps.findIndex((e) => e.id === epId)
   const ep = idx >= 0 ? eps[idx] : undefined
@@ -86,6 +90,8 @@ export default function Player() {
   const lastPreviewT = useRef(0)
   const osdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const speedRef = useRef<HTMLDivElement>(null)
+  const epPanelRef = useRef(false) // mirror for the auto-hide timer check
+  const curEpRef = useRef<HTMLButtonElement>(null)
   // live position mirror for the exit flush — on unmount React detaches
   // videoRef BEFORE effect cleanups run, so the element can't be read there
   const lastPos = useRef({ t: 0, d: 0 })
@@ -384,13 +390,27 @@ export default function Player() {
     flashOsd(nv === 0 ? '靜音' : `音量 ${Math.round(nv * 100)}%`)
   }
 
-  // anime openings run ~90s — one press skips straight past the OP
-  const skipIntro = () => {
-    const v = videoRef.current
-    if (!v || !v.duration) return
-    seek(v.currentTime + 90)
-    flashOsd('+90 秒 跳過片頭')
-  }
+  const toggleEpPanel = useCallback((open: boolean) => {
+    epPanelRef.current = open
+    setEpPanel(open)
+  }, [])
+
+  // 選集 drawer: refresh per-episode watch % when opened, close on episode
+  // change, and scroll the current episode into view.
+  useEffect(() => {
+    if (!epPanel) return
+    api
+      .progressList()
+      .then((l) => {
+        const m: Record<string, number> = {}
+        for (const p of l)
+          if (p.catId === progCat && p.duration) m[p.postId] = Math.min(100, (p.position / p.duration) * 100)
+        setEpProg(m)
+      })
+      .catch(() => {})
+    requestAnimationFrame(() => curEpRef.current?.scrollIntoView({ block: 'center' }))
+  }, [epPanel, progCat])
+  useEffect(() => toggleEpPanel(false), [epId, toggleEpPanel])
 
   const toggleFullscreen = useCallback(() => {
     const el = containerRef.current
@@ -433,16 +453,64 @@ export default function Player() {
     flashOsd(v.muted ? '靜音' : `音量 ${Math.round(v.volume * 100)}%`)
   }
 
+  // OS media integration: Windows/media-key overlay shows title + cover, and
+  // hardware play/pause/next/prev keys drive the player.
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !title) return
+    const art = isMy ? cover : metaCover
+    // anime1 episode labels already contain the anime title — don't double it
+    const epLabel = ep?.label || ''
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: !epLabel ? title : epLabel.includes(title) ? epLabel : `${title} — ${epLabel}`,
+      artist: 'Anime1',
+      artwork: art ? [{ src: art }] : []
+    })
+    return () => {
+      navigator.mediaSession.metadata = null
+    }
+  }, [title, ep?.label, isMy, cover, metaCover])
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+    const ms = navigator.mediaSession
+    ms.setActionHandler('play', () => videoRef.current?.play())
+    ms.setActionHandler('pause', () => videoRef.current?.pause())
+    ms.setActionHandler('seekbackward', () => {
+      const v = videoRef.current
+      if (v) seek(v.currentTime - 10)
+    })
+    ms.setActionHandler('seekforward', () => {
+      const v = videoRef.current
+      if (v) seek(v.currentTime + 10)
+    })
+    ms.setActionHandler('previoustrack', prevEp ? () => go(prevEp.id) : null)
+    ms.setActionHandler('nexttrack', nextEp ? () => go(nextEp.id) : null)
+    ms.setActionHandler('seekto', (d) => {
+      if (d.seekTime != null) seek(d.seekTime)
+    })
+    return () => {
+      for (const a of ['play', 'pause', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack', 'seekto'] as MediaSessionAction[])
+        try {
+          ms.setActionHandler(a, null)
+        } catch {
+          /* unsupported action */
+        }
+    }
+  }, [prevEp, nextEp, go])
+  useEffect(() => {
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'
+  }, [playing])
+
   const revealUI = useCallback(() => {
     setShowUI(true)
     if (hideTimer.current) clearTimeout(hideTimer.current)
     hideTimer.current = setTimeout(() => {
-      // Never auto-hide while the user is interacting with the seek bar.
+      // Never auto-hide while the user is interacting with the seek bar or 選集.
       if (
         videoRef.current &&
         !videoRef.current.paused &&
         !overBarRef.current &&
-        !scrubbingRef.current
+        !scrubbingRef.current &&
+        !epPanelRef.current
       )
         setShowUI(false)
     }, 3000)
@@ -489,8 +557,8 @@ export default function Player() {
         case 'm':
           toggleMute()
           break
-        case 's':
-          skipIntro()
+        case 'e':
+          toggleEpPanel(!epPanelRef.current)
           break
         case 'f':
           toggleFullscreen()
@@ -502,7 +570,8 @@ export default function Player() {
           if (nextEp) go(nextEp.id)
           break
         case 'Escape':
-          if (speedMenu) setSpeedMenu(false)
+          if (epPanelRef.current) toggleEpPanel(false)
+          else if (speedMenu) setSpeedMenu(false)
           else if (!document.fullscreenElement) nav(-1)
           break
         default:
@@ -640,6 +709,50 @@ export default function Player() {
         </div>
       )}
 
+      {/* 選集 drawer — jump to any episode without leaving the player */}
+      {epPanel && (
+        <>
+          <div className="absolute inset-0 z-30" onClick={() => toggleEpPanel(false)} />
+          <div className="absolute top-0 right-0 bottom-0 z-40 w-80 max-w-[85vw] bg-zinc-900/95 backdrop-blur border-l border-white/10 flex flex-col">
+            <div className="flex items-center justify-between px-4 h-14 border-b border-white/10 shrink-0">
+              <span className="font-semibold">
+                選集 <span className="text-xs text-zinc-500 font-normal">共 {eps.length} 集</span>
+              </span>
+              <button onClick={() => toggleEpPanel(false)} className="text-zinc-400 hover:text-white px-1">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto py-2">
+              {eps.map((e, i) => {
+                const current = e.id === epId
+                const pct = epProg[e.id] || 0
+                return (
+                  <button
+                    key={e.id}
+                    ref={current ? curEpRef : undefined}
+                    onClick={() => !current && go(e.id)}
+                    className={`relative w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors ${
+                      current ? 'bg-brand/15 text-brand' : 'hover:bg-white/10 text-zinc-200'
+                    }`}
+                  >
+                    <span className="w-8 shrink-0 text-sm font-semibold tabular-nums">{i + 1}</span>
+                    <span className="flex-1 text-sm truncate">{e.label}</span>
+                    {current ? (
+                      <span className="text-[10px] shrink-0">播放中</span>
+                    ) : pct >= 95 ? (
+                      <span className="text-[10px] text-green-400 shrink-0">✓ 看完</span>
+                    ) : pct > 0 ? (
+                      <span className="text-[10px] text-zinc-500 shrink-0">{Math.round(pct)}%</span>
+                    ) : null}
+                    {pct > 0 && pct < 95 && !current && (
+                      <span className="absolute left-0 bottom-0 h-0.5 bg-brand" style={{ width: `${pct}%` }} />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
       {/* top bar */}
       <div className={`absolute top-0 inset-x-0 px-5 pt-5 pb-12 bg-gradient-to-b from-black/80 to-transparent transition-all duration-300 ${showUI ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}>
         <button onClick={() => nav(-1)} className="text-white/90 hover:text-white flex items-center gap-1.5 text-sm">
@@ -712,13 +825,6 @@ export default function Player() {
           <button onClick={togglePlay} className="text-white hover:text-brand transition-colors">{playing ? Icon.pause : Icon.play}</button>
           <button onClick={() => prevEp && go(prevEp.id)} disabled={!prevEp} className="text-white/90 hover:text-brand disabled:opacity-30 transition-colors" title="上一集">{Icon.prev}</button>
           <button onClick={() => nextEp && go(nextEp.id)} disabled={!nextEp} className="text-white/90 hover:text-brand disabled:opacity-30 transition-colors" title="下一集 (N)">{Icon.next}</button>
-          <button
-            onClick={skipIntro}
-            title="快轉 90 秒跳過片頭 (S)"
-            className="text-white/80 hover:text-brand transition-colors text-[11px] font-semibold border border-white/25 hover:border-brand rounded px-1.5 py-0.5"
-          >
-            跳OP
-          </button>
 
           {/* volume — always-visible custom slider */}
           <div className="flex items-center gap-2">
@@ -751,6 +857,15 @@ export default function Player() {
           </span>
 
           <div className="ml-auto flex items-center gap-3">
+            {eps.length > 1 && (
+              <button
+                onClick={() => toggleEpPanel(!epPanel)}
+                className={`hover:text-brand transition-colors ${epPanel ? 'text-brand' : 'text-white/90'}`}
+                title="選集 (E)"
+              >
+                {Icon.list}
+              </button>
+            )}
             {/* speed */}
             <div className="relative" ref={speedRef}>
               <button

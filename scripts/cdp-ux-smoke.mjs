@@ -80,12 +80,18 @@ const hasSkeletonCss = await ev(`(()=>{
 })()`)
 check('.skeleton css rule present', hasSkeletonCss)
 
-// ---- 3) back-to-top button appears after scrolling
-await ev(`(()=>{ window.scrollTo(0, 2000); return true })()`)
-await sleep(400)
-const btt = await ev(`!!document.querySelector('button[title="回到頂部"]')`)
-check('回到頂部 button appears after scroll', btt)
-await ev(`(()=>{ window.scrollTo(0, 0); return true })()`)
+// ---- 3) back-to-top button appears after scrolling (needs a visible page —
+// occluded windows pause rendering steps and scroll events never fire)
+const visible = await ev(`document.visibilityState`)
+if (visible === 'hidden') {
+  console.log('  - 回到頂部 check SKIPPED (window occluded; relaunch with --disable-features=CalculateNativeWinOcclusion and keep it visible)')
+} else {
+  await ev(`(()=>{ window.scrollTo(0, 2000); return true })()`)
+  await sleep(400)
+  const btt = await ev(`!!document.querySelector('button[title="回到頂部"]')`)
+  check('回到頂部 button appears after scroll', btt)
+  await ev(`(()=>{ window.scrollTo(0, 0); return true })()`)
+}
 
 // ---- 4) nav search: / focuses input
 await ev(`(()=>{ window.dispatchEvent(new KeyboardEvent('keydown', {key:'/', bubbles:true})); return true })()`)
@@ -96,8 +102,18 @@ await ev(`(()=>{ document.activeElement && document.activeElement.blur(); return
 
 // ---- 5) player: pick a continue-watching/first anime with episodes and play ep1
 console.log('[2] Player')
-const animeId = await ev(`window.api.list().then(l => l[0].catId)`)
-const ep = await ev(`window.api.episodes('${animeId}').then(e => e[0] ? {postId:e[0].postId} : null)`)
+// prefer a multi-episode anime so the 選集 drawer check is representative
+const picked = await ev(`(async () => {
+  const l = await window.api.list()
+  for (const a of l.slice(0, 8)) {
+    const eps = await window.api.episodes(a.catId).catch(() => [])
+    if (eps.length > 1) return { catId: a.catId, postId: eps[0].postId }
+  }
+  const eps = await window.api.episodes(l[0].catId)
+  return eps[0] ? { catId: l[0].catId, postId: eps[0].postId } : null
+})()`)
+const animeId = picked?.catId
+const ep = picked ? { postId: picked.postId } : null
 if (!ep) {
   check('episodes available for player test', false)
 } else {
@@ -129,16 +145,28 @@ if (!ep) {
   check('M key: mutes + OSD', mutedNow === true && osd2 === '靜音', String(osd2))
   await ev(`(()=>{ window.dispatchEvent(new KeyboardEvent('keydown', {key:'m'})); return true })()`)
 
-  // skip OP: s → +90s
-  const t2 = await ev(`document.querySelector('video').currentTime`)
-  await ev(`(()=>{ window.dispatchEvent(new KeyboardEvent('keydown', {key:'s'})); return true })()`)
-  await sleep(250)
-  const t3 = await ev(`document.querySelector('video').currentTime`)
-  check('S key: skips ~90s (跳OP)', t3 - t2 > 80, `${t2.toFixed(1)} → ${t3.toFixed(1)}`)
+  // OS media integration: metadata should carry the anime + episode title
+  const msTitle = await ev(`navigator.mediaSession.metadata ? navigator.mediaSession.metadata.title : null`)
+  check('MediaSession metadata set', !!msTitle, String(msTitle))
 
-  // 跳OP button exists in controls
-  const skipBtn = await ev(`[...document.querySelectorAll('button')].some(b => (b.textContent||'').includes('跳OP'))`)
-  check('跳OP button in controls', skipBtn)
+  // 選集 drawer: E opens it, lists every episode, highlights the current one
+  await ev(`(()=>{ window.dispatchEvent(new KeyboardEvent('keydown', {key:'e'})); return true })()`)
+  await sleep(400)
+  const epCount = await ev(`window.api.episodes('${animeId}').then(e => e.length)`)
+  const drawer = await ev(`(()=>{
+    const head = [...document.querySelectorAll('span')].find(s => (s.textContent||'').startsWith('選集'))
+    if (!head) return null
+    const panel = head.closest('.absolute')
+    const items = [...panel.querySelectorAll('.overflow-y-auto button')]
+    return { items: items.length, current: items.filter(b => b.className.includes('bg-brand')).length, playing: items.some(b => (b.textContent||'').includes('播放中')) }
+  })()`)
+  check('選集 drawer opens (E) and lists all eps', !!drawer && drawer.items === epCount, JSON.stringify(drawer))
+  check('選集 highlights current episode', !!drawer && drawer.current === 1 && drawer.playing)
+  // Esc closes the drawer without leaving the player
+  await ev(`(()=>{ window.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape'})); return true })()`)
+  await sleep(300)
+  const afterEsc = await ev(`(()=>({ drawer: ![...document.querySelectorAll('span')].some(s => (s.textContent||'').startsWith('選集') && s.closest('.absolute.top-0.right-0')), onWatch: location.hash.includes('/watch/') }))()`)
+  check('Esc closes 選集 but stays in player', afterEsc.drawer && afterEsc.onWatch)
 
   // number key: 5 → 50%
   await ev(`(()=>{ window.dispatchEvent(new KeyboardEvent('keydown', {key:'5'})); return true })()`)
@@ -146,18 +174,19 @@ if (!ep) {
   const half = await ev(`(()=>{ const v=document.querySelector('video'); return Math.abs(v.currentTime - v.duration*0.5) < 2 })()`)
   check('5 key: jumps to 50%', half)
 
-  // exit-flush: seek somewhere distinctive, wait for the seek to land, then
-  // leave and read the saved progress
-  await ev(`(()=>{ const v=document.querySelector('video'); v.currentTime = 123; return true })()`)
+  // exit-flush: seek somewhere distinctive (70% — must stay inside the episode,
+  // shorts can be only ~90s long), wait for the seek to land, then leave and
+  // read the saved progress
+  const target = await ev(`(()=>{ const v=document.querySelector('video'); const t=Math.round(v.duration*0.7); v.currentTime=t; return t })()`)
   for (let i = 0; i < 20; i++) {
     await sleep(200)
-    const landed = await ev(`(()=>{ const v=document.querySelector('video'); return !v.seeking && Math.abs(v.currentTime-123)<3 })()`)
+    const landed = await ev(`(()=>{ const v=document.querySelector('video'); return !v.seeking && Math.abs(v.currentTime-${target})<3 })()`)
     if (landed) break
   }
   await ev(`(()=>{ window.location.hash = '#/'; return true })()`)
   await sleep(800)
   const saved = await ev(`window.api.progressOne('${animeId}', '${ep.postId}')`)
-  check('progress flushed on exit (~123s)', saved && Math.abs(saved.position - 123) < 6, `saved=${saved && saved.position}`)
+  check(`progress flushed on exit (~${target}s)`, saved && Math.abs(saved.position - target) < 6, `saved=${saved && saved.position}`)
 
   // restore prior progress state (avoid polluting the user's data)
   if (prior) {
