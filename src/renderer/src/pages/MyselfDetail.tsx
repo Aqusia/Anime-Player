@@ -5,6 +5,7 @@ import { useStore } from '../store'
 import { franchiseKey, heatScore, relatedMy, timeAgo, titleCore } from '../lib'
 import HoverPreview from '../components/HoverPreview'
 import MyCard from '../components/MyCard'
+import { EpisodeGridSkeleton } from '../components/Skeleton'
 
 function MyEp({
   ep,
@@ -296,9 +297,11 @@ export default function MyselfDetail() {
       <div className="px-8 mt-8">
         <h2 className="text-xl font-bold mb-4">劇集列表</h2>
         {det === null ? (
-          <div className="flex items-center gap-3 text-zinc-400">
-            <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            <span>{tries > 0 ? '載入劇集中…（Myself 來源較慢,自動重試中）' : '載入劇集中…'}</span>
+          <div>
+            <EpisodeGridSkeleton />
+            {tries > 0 && (
+              <p className="mt-3 text-xs text-zinc-500">Myself 來源較慢，自動重試中…</p>
+            )}
           </div>
         ) : eps.length === 0 ? (
           <p className="text-zinc-400">找不到劇集。</p>

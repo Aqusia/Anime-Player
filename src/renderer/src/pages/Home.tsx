@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useStore } from '../store'
 import { api, type Anime, type MyAnime, type Progress } from '../api'
@@ -21,11 +21,24 @@ import Row from '../components/Row'
 import ContinueRow from '../components/ContinueRow'
 import Grid from '../components/Grid'
 import Dropdown from '../components/Dropdown'
+import { HomeSkeleton } from '../components/Skeleton'
 
 const PAGE = 6 // season rows revealed per scroll step
 
 export default function Home() {
-  const { list, byId, myList, myById, watched, loadMyCatalog, meta, metaStatus, error, load } = useStore()
+  // individual selectors (not a whole-store destructure) so unrelated store
+  // updates — download progress broadcasts etc. — don't re-render the page
+  const list = useStore((s) => s.list)
+  const byId = useStore((s) => s.byId)
+  const myList = useStore((s) => s.myList)
+  const myById = useStore((s) => s.myById)
+  const watched = useStore((s) => s.watched)
+  const loadMyCatalog = useStore((s) => s.loadMyCatalog)
+  const loadProgress = useStore((s) => s.loadProgress)
+  const meta = useStore((s) => s.meta)
+  const metaStatus = useStore((s) => s.metaStatus)
+  const error = useStore((s) => s.error)
+  const load = useStore((s) => s.load)
   const [params] = useSearchParams()
   const [progress, setProgress] = useState<Progress[]>([])
   const [visible, setVisible] = useState(PAGE)
@@ -142,6 +155,73 @@ export default function Home() {
     return () => io.disconnect()
   }, [groups.length])
 
+  // Most-recent unfinished episode per anime (progress list is sorted newest-first).
+  // Unified across sources: keep anime1 titles still in the list AND any myself
+  // (`my:`) entries (whose covers/titles ride along on the progress record).
+  const continueWatching = useMemo(
+    () =>
+      dedupeBy(
+        progress.filter((p) => !p.duration || p.position < p.duration * 0.95),
+        (p) => p.catId
+      ).filter((p) => p.catId.startsWith('my:') || byId[p.catId]),
+    [progress, byId]
+  )
+
+  // ✕ on a continue-watching card: drop that anime's progress (same behavior as
+  // the 觀看紀錄 page) and refresh both the row and the poster markers.
+  const removeContinue = useCallback(
+    (p: Progress) => {
+      api
+        .progressRemoveAnime(p.catId)
+        .then(() => {
+          api.progressList().then(setProgress).catch(() => {})
+          loadProgress()
+        })
+        .catch(() => {})
+    },
+    [loadProgress]
+  )
+
+  const latest = useMemo(() => list.slice(0, 24), [list])
+  // my-list preserves saved order; resolve each id to an anime1 or myself entry.
+  const my = useMemo(
+    () =>
+      myList.map((id) => (id.startsWith('my:') ? myById[id.slice(3)] : byId[id])).filter(Boolean),
+    [myList, myById, byId]
+  )
+  // personalized "因為你看了《X》" shelves from recent watch history
+  const personalRows = useMemo(
+    () => becauseYouWatched(progress, watched, list, byId, meta),
+    [progress, watched, list, byId, meta]
+  )
+  // Hero rotates through the top recommendations, preferring titles you haven't
+  // watched (any progress OR manually marked 已看完). Falls back to all recos,
+  // then to continue-watching / latest before metadata produces recommendations.
+  const heroPool = useMemo<(Anime | MyAnime)[]>(() => {
+    const keyOf = (it: Anime | MyAnime): string => ('catId' in it ? it.catId : `my:${it.id}`)
+    const seen = new Set<string>([...progress.map((p) => p.catId), ...watched])
+    const unseenReco = recoPool.filter((it) => !seen.has(keyOf(it)))
+    const basePool = unseenReco.length ? unseenReco : recoPool
+    return basePool.length
+      ? basePool.slice(0, 12)
+      : ([(continueWatching[0] && byId[continueWatching[0].catId]) || latest[0]].filter(
+          Boolean
+        ) as (Anime | MyAnime)[])
+  }, [progress, watched, recoPool, continueWatching, byId, latest])
+  const hero = heroPool.length ? heroPool[heroIdx % heroPool.length] : undefined
+
+  // Warm the NEXT hero's cover while the current one shows, so each 8s rotation
+  // crossfades into an already-decoded image instead of loading in front of you.
+  useEffect(() => {
+    if (heroPool.length < 2) return
+    const nxt = heroPool[(heroIdx + 1) % heroPool.length]
+    const cover = 'catId' in nxt ? meta[nxt.catId]?.cover : nxt.cover
+    if (cover) {
+      const im = new Image()
+      im.src = cover
+    }
+  }, [heroIdx, heroPool, meta])
+
   if (error) {
     return (
       <div className="pt-24 px-8">
@@ -154,35 +234,8 @@ export default function Home() {
   }
 
   if (!list.length) {
-    return <div className="pt-24 px-8 text-zinc-400">載入中…</div>
+    return <HomeSkeleton />
   }
-
-  // Most-recent unfinished episode per anime (progress list is sorted newest-first).
-  // Unified across sources: keep anime1 titles still in the list AND any myself
-  // (`my:`) entries (whose covers/titles ride along on the progress record).
-  const continueWatching = dedupeBy(
-    progress.filter((p) => !p.duration || p.position < p.duration * 0.95),
-    (p) => p.catId
-  ).filter((p) => p.catId.startsWith('my:') || byId[p.catId])
-
-  const latest = list.slice(0, 24)
-  // my-list preserves saved order; resolve each id to an anime1 or myself entry.
-  const my = myList
-    .map((id) => (id.startsWith('my:') ? myById[id.slice(3)] : byId[id]))
-    .filter(Boolean)
-  // personalized "因為你看了《X》" shelves from recent watch history
-  const personalRows = becauseYouWatched(progress, watched, list, byId, meta)
-  // Hero rotates through the top recommendations, preferring titles you haven't
-  // watched (any progress OR manually marked 已看完). Falls back to all recos,
-  // then to continue-watching / latest before metadata produces recommendations.
-  const keyOf = (it: Anime | MyAnime): string => ('catId' in it ? it.catId : `my:${it.id}`)
-  const seen = new Set<string>([...progress.map((p) => p.catId), ...watched])
-  const unseenReco = recoPool.filter((it) => !seen.has(keyOf(it)))
-  const basePool = unseenReco.length ? unseenReco : recoPool
-  const heroPool: (Anime | MyAnime)[] = basePool.length
-    ? basePool.slice(0, 12)
-    : ([(continueWatching[0] && byId[continueWatching[0].catId]) || latest[0]].filter(Boolean) as (Anime | MyAnime)[])
-  const hero = heroPool.length ? heroPool[heroIdx % heroPool.length] : undefined
 
   return (
     <div className="pb-20">
@@ -242,7 +295,7 @@ export default function Home() {
                 onRefresh={() => setRecoSeed((s) => s + 1)}
               />
             )}
-            <ContinueRow items={continueWatching} />
+            <ContinueRow items={continueWatching} onRemove={removeContinue} />
             {personalRows.map((r) => (
               <Row
                 key={'byw-' + r.seed.catId}
@@ -265,8 +318,9 @@ export default function Home() {
         )}
       </div>
 
+      {/* bottom-LEFT so it never overlaps the floating 回到頂部 button */}
       {metaStatus.building && metaStatus.total > 0 && (
-        <div className="fixed bottom-4 right-4 z-50 bg-panel/95 border border-white/10 rounded-lg px-4 py-2 text-xs text-zinc-300 shadow-xl flex items-center gap-2">
+        <div className="fixed bottom-4 left-4 z-50 bg-panel/95 border border-white/10 rounded-lg px-4 py-2 text-xs text-zinc-300 shadow-xl flex items-center gap-2">
           <span className="h-3 w-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
           評價 / 封面更新中… {metaStatus.done}/{metaStatus.total}
         </div>

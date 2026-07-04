@@ -27,7 +27,7 @@ release/win-unpacked/Anime1.exe --remote-debugging-port=9222
 
 | 腳本 | 測什麼 |
 |---|---|
-| `cdp-hls-test.mjs` | HLS / myself 影片在 app 內實際播放（readyState / duration） |
+| `cdp-ux-smoke.mjs` | 介面/播放器 UX 冒煙：首頁卡片與封面淡入、skeleton、回到頂部、`/` 搜尋聚焦、播放器 OSD 與 M/S/數字快捷鍵、離開播放器立即存進度。視窗被遮蔽會使捲動類檢查失敗，啟動時加 `--disable-features=CalculateNativeWinOcclusion` |
 | `cdp-my-test.mjs` | myself 詳情頁載入 + 集數 + 播放 |
 | `cdp-dl-test.mjs` | 離線下載端到端（下載 → 落地檔案 → 離線播放） |
 

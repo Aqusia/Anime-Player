@@ -1,10 +1,13 @@
+import { memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { type Anime } from '../api'
 import { useStore } from '../store'
 import PosterCard from './PosterCard'
 
-/** anime1 poster card — wraps the shared <PosterCard> with store-backed meta. */
-export default function Card({ anime }: { anime: Anime }) {
+/** anime1 poster card — wraps the shared <PosterCard> with store-backed meta.
+ *  Memoized: list pages render hundreds of these, and parent re-renders (hero
+ *  rotation, download/meta progress broadcasts) shouldn't touch them. */
+function Card({ anime }: { anime: Anime }) {
   const nav = useNavigate()
   const meta = useStore((s) => s.meta[anime.catId])
   const sub = [`${anime.year} ${anime.season}`.trim(), anime.episodes].filter(Boolean).join(' · ')
@@ -21,3 +24,5 @@ export default function Card({ anime }: { anime: Anime }) {
     />
   )
 }
+
+export default memo(Card)

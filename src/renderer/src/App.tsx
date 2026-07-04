@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Outlet, useLocation, useNavigationType } from 'react-router-dom'
 import Nav from './components/Nav'
+import BackToTop from './components/BackToTop'
 import { useStore } from './store'
 import { api } from './api'
 import { reconcilePrefs } from './playerPrefs'
@@ -74,6 +75,7 @@ export default function App() {
     <div className="min-h-screen bg-ink text-white">
       <Nav />
       <Outlet />
+      <BackToTop />
     </div>
   )
 }

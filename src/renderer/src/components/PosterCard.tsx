@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { heatScore } from '../lib'
 import { useStore } from '../store'
+import FadeImg from './FadeImg'
 
 export interface PosterCardProps {
   cover?: string
@@ -53,7 +54,7 @@ export default function PosterCard({
         className="group relative aspect-[2/3] rounded-lg overflow-hidden bg-panel ring-1 ring-white/5 cursor-pointer transition-transform duration-200 hover:scale-105 hover:ring-white/30 hover:z-10"
       >
         {cover ? (
-          <img
+          <FadeImg
             src={cover}
             alt={title}
             className="w-full h-full object-cover"

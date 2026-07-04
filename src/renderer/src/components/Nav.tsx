@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { addSearchHistory, getSearchHistory, removeSearchHistory, clearSearchHistory } from '../searchHistory'
 
@@ -10,11 +10,28 @@ export default function Nav() {
   const [open, setOpen] = useState(false)
   const [typing, setTyping] = useState(false) // distinguishes active typing from a retained prior query
   const [history, setHistory] = useState<string[]>([])
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20)
-    window.addEventListener('scroll', onScroll)
+    window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  // `/` from anywhere (except while typing in a field) jumps to the search box.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      const inField =
+        t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || !!t?.isContentEditable
+      if (e.key === '/' && !inField) {
+        e.preventDefault()
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   const goSearch = (query: string) => {
@@ -33,7 +50,11 @@ export default function Nav() {
     goSearch(q)
   }
 
-  const active = (p: string) => (loc.pathname === p ? 'text-white' : 'text-zinc-400 hover:text-white')
+  // Highlight the section even on its sub-pages (e.g. /myself/anime/… → Myself).
+  const active = (p: string) =>
+    (p === '/' ? loc.pathname === '/' : loc.pathname.startsWith(p))
+      ? 'text-white'
+      : 'text-zinc-400 hover:text-white'
 
   // On focus we show recent searches; once the user actually types, we narrow to
   // matches. A retained prior query (typing=false) still shows the full history
@@ -87,6 +108,7 @@ export default function Nav() {
         >
           <form onSubmit={submit} className="relative">
             <input
+              ref={inputRef}
               value={q}
               onChange={(e) => {
                 setQ(e.target.value)
@@ -96,7 +118,13 @@ export default function Nav() {
                 setHistory(getSearchHistory())
                 setOpen(true)
               }}
-              placeholder="搜尋動畫…"
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setOpen(false)
+                  e.currentTarget.blur()
+                }
+              }}
+              placeholder="搜尋動畫…（/）"
               className="bg-black/60 border border-white/20 rounded pl-3 pr-8 py-1.5 text-sm w-56 focus:w-72 transition-all outline-none focus:border-white/50"
             />
             {q && (

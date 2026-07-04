@@ -1,11 +1,12 @@
+import { memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { type MyAnime } from '../api'
 import PosterCard from './PosterCard'
 
 /** myself-bbs poster card — wraps the shared <PosterCard> so both sources match.
  *  Passes score/votes along in router state so the detail page can show the
- *  same 綜合評分 without an extra lookup. */
-export default function MyCard({ a }: { a: MyAnime }) {
+ *  same 綜合評分 without an extra lookup. Memoized like <Card>. */
+function MyCard({ a }: { a: MyAnime }) {
   const nav = useNavigate()
   const epLabel =
     a.episodes > 0 ? (a.kind === 'airing' ? `更新至 ${a.episodes}` : `全 ${a.episodes} 集`) : ''
@@ -27,3 +28,5 @@ export default function MyCard({ a }: { a: MyAnime }) {
     />
   )
 }
+
+export default memo(MyCard)

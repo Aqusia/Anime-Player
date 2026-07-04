@@ -6,6 +6,7 @@ import { useStore } from '../store'
 import MyCard from '../components/MyCard'
 import MyHero from '../components/MyHero'
 import Dropdown from '../components/Dropdown'
+import { PosterGridSkeleton } from '../components/Skeleton'
 
 const PAGE = 60 // cards revealed per scroll step
 
@@ -190,7 +191,12 @@ export default function MyselfHome() {
           )}
         </>
       ) : catalog === null && !failed ? (
-        <p className="text-zinc-400">載入片庫中…(首次啟動需建立索引,約 1 分鐘,完成後即可瞬間瀏覽)</p>
+        <div>
+          <p className="text-zinc-500 text-sm mb-5">
+            載入片庫中…(首次啟動需建立索引,約 1 分鐘,完成後即可瞬間瀏覽)
+          </p>
+          <PosterGridSkeleton count={18} />
+        </div>
       ) : failed ? (
         <p className="text-zinc-400">片庫載入失敗,請稍後重新開啟。</p>
       ) : (

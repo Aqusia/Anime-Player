@@ -5,6 +5,40 @@
 
 ---
 
+## 2026-07-04（第十二輪）— 全面 UX 打磨:操作回饋 / 感知速度 / 效能 / 舒適度
+
+使用者要求「盡可能優化使用感受、介面、速度、舒適度」。四個方向,全部實機驗證。
+
+### 一、播放器操作回饋 + 快捷鍵(Player.tsx)
+- **OSD 即時回饋**:快轉/音量/速度/靜音等鍵盤與滾輪操作,畫面上方閃現膠囊提示(±10 秒、音量 N%、Nx 速度、靜音…)。`osd` state + `flashOsd()`,`n` 計數 key 讓同鍵連按也重播動畫(css `.osd-flash`)。
+- **新快捷鍵**:`M` 靜音、`J`/`L` ±10 秒(YouTube 慣性)、數字 `0-9` 跳至該成數、`S` 跳過片頭(+90 秒,動畫 OP 長度);控制列新增「跳OP」小按鈕。`Esc` 先關速度選單再返回。
+- **滾輪 = 音量**(桌面播放器慣例),含 OSD。
+- **速度選單點外面自動關閉**(先前開著不動就一直開著):`speedRef` + window pointerdown。
+- **★ 離開播放器立即存進度(修真 bug)**:原本進度存檔節流 4 秒,「快轉完馬上退出」會掉最新位置。經 CDP 實測發現兩層問題:(1) unmount 時 React **先解除 videoRef 才跑 passive effect cleanup**,cleanup 讀不到 video → 改用 `lastPos` ref(onTimeUpdate / seek() / onSeeked 即時鏡寫,換集時歸零),cleanup 由它存檔;(2) 守門 `t>5 && t<dur-1` 避免剛載入/已看完誤寫。驗證:seek 到 123s 立刻退出 → 存回 123 ✓。
+
+### 二、感知速度(skeleton + 圖片淡入 + 預載)
+- **components/Skeleton.tsx**:PosterSkeleton / PosterGridSkeleton / RowSkeleton / HomeSkeleton / EpisodeGridSkeleton / DetailSkeleton,css `.skeleton` shimmer。取代所有純文字「載入中…」:Home 首載(hero+兩排)、Detail 劇集格、Detail 深連結未載完(原本會閃「找不到此動畫」)、MyselfDetail 劇集格(保留自動重試字樣)、MyselfHome 首次建索引、Search 的 Myself 區塊。
+- **components/FadeImg.tsx**:封面解碼完成才淡入(`.img-fade` + onLoad;已快取的圖用 ref callback 檢 `complete` 直接顯示),用於 PosterCard/ContinueCard;`decoding="async"`。
+- **Hero 輪播預載下一張**:輪到前先 `new Image().src` 暖圖,8 秒換頁交叉淡化時不再現場載圖。
+
+### 三、效能(重繪範圍)
+- **Card / MyCard / ContinueCard 全部 React.memo**;Home 的衍生陣列(continueWatching / latest / my / personalRows / heroPool)改 useMemo → hero 每 8 秒輪播、meta/下載進度廣播不再重繪整頁幾百張卡片。
+- **Home / Detail 改逐欄位 zustand selector**(原本解構整個 store = 訂閱所有變更,下載進度每個事件都重繪整頁)。
+- Nav / BackToTop scroll listener 加 `passive: true`。
+
+### 四、導覽舒適度
+- **`/` 聚焦搜尋框**(打字中不攔截),搜尋框 `Esc` 關閉下拉並失焦,placeholder 提示「(/)」。
+- **繼續觀看卡片 hover ✕ 移除**(= 觀看紀錄頁行為:清該部進度),Home 傳 `removeContinue` 進 ContinueRow/ContinueCard,移除後刷新列與海報標記。
+- **回到頂部浮動鈕**(components/BackToTop.tsx,捲逾 800px 出現;meta 建置 toast 移到左下避免重疊)。
+- **Nav 分頁高亮支援子路徑**(在 /myself/anime/… 時「Myself 動漫」也亮)。
+- 鍵盤使用者 `:focus-visible` 外框。
+
+### 驗證
+`tsc --noEmit` 零錯、`npm run build` ✅、`npm run verify` 15/15 ✅。新增 **scripts/cdp-ux-smoke.mjs**(取代呼叫已移除 cc API 的死腳本 cdp-hls-test.mjs):15 項實機檢查全過 — 首頁 249 張卡片渲染+淡入、skeleton css、回到頂部、`/` 聚焦、影片可播(readyState 4)、→/M/S/5 快捷鍵與 OSD、離開即存進度、零 console error。
+**測試環境陷阱(記下)**:視窗被遮蔽時 Chromium 佔用偵測(CalculateNativeWinOcclusion)把頁面標 hidden → rendering steps 暫停,程式化捲動不觸發 scroll 事件,回到頂部/Nav 捲動樣式測不到;啟動加 `--disable-features=CalculateNativeWinOcclusion` 或 `Page.bringToFront` 且視窗真的可見才測得到。
+
+---
+
 ## 2026-07-02（第十一輪）— 持久化:紀錄不因關機遺失 + smoke:my TLS
 
 回報「很多紀錄會因未關機不見」。查證結論:**一半是真的**。

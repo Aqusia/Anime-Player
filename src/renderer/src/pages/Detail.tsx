@@ -5,6 +5,7 @@ import { api, type BgmEp, type Episode, type EpDownload, type Meta, type Progres
 import { franchiseKey, timeAgo, heatScore, relatedAnime, titleCore } from '../lib'
 import Card from '../components/Card'
 import HoverPreview from '../components/HoverPreview'
+import { DetailSkeleton, EpisodeGridSkeleton } from '../components/Skeleton'
 
 function MeEp({
   catId,
@@ -80,7 +81,16 @@ function MeEp({
 export default function Detail() {
   const { catId } = useParams()
   const nav = useNavigate()
-  const { byId, list, myList, watched, toggleMy, toggleWatched, loaded, load } = useStore()
+  // individual selectors so unrelated store updates (e.g. download progress
+  // broadcasts) don't re-render the whole page
+  const byId = useStore((s) => s.byId)
+  const list = useStore((s) => s.list)
+  const myList = useStore((s) => s.myList)
+  const watched = useStore((s) => s.watched)
+  const toggleMy = useStore((s) => s.toggleMy)
+  const toggleWatched = useStore((s) => s.toggleWatched)
+  const loaded = useStore((s) => s.loaded)
+  const load = useStore((s) => s.load)
   const metaMap = useStore((s) => s.meta)
   const myById = useStore((s) => s.myById)
   const loadMyCatalog = useStore((s) => s.loadMyCatalog)
@@ -164,7 +174,9 @@ export default function Detail() {
   const cur = epStates.find((e) => e.status === 'downloading')
   const curPct = cur && cur.total ? Math.round((cur.bytes / cur.total) * 100) : 0
 
-  if (!anime) return <div className="pt-24 px-8 text-zinc-400">找不到此動畫。</div>
+  // deep link / first boot: the list may still be loading — show a skeleton
+  // rather than flashing "找不到此動畫"
+  if (!anime) return loaded ? <div className="pt-24 px-8 text-zinc-400">找不到此動畫。</div> : <DetailSkeleton />
 
   const inList = myList.includes(anime.catId)
   const isWatched = watched.includes(anime.catId)
@@ -303,7 +315,7 @@ export default function Detail() {
       <div className="px-8 mt-8">
         <h2 className="text-xl font-bold mb-4">劇集列表</h2>
         {eps === null ? (
-          <p className="text-zinc-400">載入劇集中…</p>
+          <EpisodeGridSkeleton />
         ) : eps.length === 0 ? (
           <p className="text-zinc-400">找不到劇集。</p>
         ) : (

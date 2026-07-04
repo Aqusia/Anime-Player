@@ -2,7 +2,13 @@ import { useRef } from 'react'
 import ContinueCard from './ContinueCard'
 import type { Progress } from '../api'
 
-export default function ContinueRow({ items }: { items: Progress[] }) {
+export default function ContinueRow({
+  items,
+  onRemove
+}: {
+  items: Progress[]
+  onRemove?: (p: Progress) => void
+}) {
   const scroller = useRef<HTMLDivElement>(null)
   if (!items.length) return null
 
@@ -22,7 +28,7 @@ export default function ContinueRow({ items }: { items: Progress[] }) {
         </button>
         <div ref={scroller} className="flex gap-3 overflow-x-auto no-scrollbar px-8 pb-2">
           {items.map((p) => (
-            <ContinueCard key={`${p.catId}_${p.postId}`} p={p} />
+            <ContinueCard key={`${p.catId}_${p.postId}`} p={p} onRemove={onRemove} />
           ))}
         </div>
         <button

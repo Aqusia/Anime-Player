@@ -1,9 +1,11 @@
+import { memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { type Progress } from '../api'
 import { useStore } from '../store'
 import { fmtTime, timeAgo } from '../lib'
+import FadeImg from './FadeImg'
 
-export default function ContinueCard({ p }: { p: Progress }) {
+function ContinueCard({ p, onRemove }: { p: Progress; onRemove?: (p: Progress) => void }) {
   const nav = useNavigate()
   const meta = useStore((s) => s.meta[p.catId])
   const anime = useStore((s) => s.byId[p.catId])
@@ -27,7 +29,7 @@ export default function ContinueCard({ p }: { p: Progress }) {
         className="group relative aspect-video rounded-lg overflow-hidden bg-panel ring-1 ring-white/5 cursor-pointer transition-transform duration-200 hover:scale-105 hover:ring-white/30 hover:z-10"
       >
         {cover ? (
-          <img
+          <FadeImg
             src={cover}
             alt=""
             className="w-full h-full object-cover blur-[1px] scale-110 opacity-90"
@@ -46,6 +48,18 @@ export default function ContinueCard({ p }: { p: Progress }) {
             </svg>
           </div>
         </div>
+        {onRemove && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemove(p)
+            }}
+            title="從繼續觀看移除（清除本作觀看進度）"
+            className="absolute top-1.5 right-1.5 z-10 h-6 w-6 rounded-full bg-black/60 text-zinc-300 hover:text-white hover:bg-black/85 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-xs"
+          >
+            ✕
+          </button>
+        )}
         {/* info */}
         <div className="absolute inset-x-0 bottom-0 px-2 pt-6 pb-2.5 bg-gradient-to-t from-black/90 to-transparent">
           <div className="text-xs font-semibold truncate">{epLabel}</div>
@@ -74,3 +88,5 @@ export default function ContinueCard({ p }: { p: Progress }) {
     </div>
   )
 }
+
+export default memo(ContinueCard)

@@ -67,6 +67,9 @@ export default function Player() {
   const [scrubbing, setScrubbing] = useState(false)
   const [isPiP, setIsPiP] = useState(false)
   const [hover, setHover] = useState<{ ratio: number; t: number } | null>(null)
+  // transient on-screen feedback for keyboard/wheel actions (seek/volume/speed);
+  // `n` bumps so repeating the same action re-triggers the flash animation
+  const [osd, setOsd] = useState<{ text: string; n: number } | null>(null)
 
   const idx = eps.findIndex((e) => e.id === epId)
   const ep = idx >= 0 ? eps[idx] : undefined
@@ -81,6 +84,17 @@ export default function Player() {
   const scrubbingRef = useRef(false)
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastPreviewT = useRef(0)
+  const osdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const speedRef = useRef<HTMLDivElement>(null)
+  // live position mirror for the exit flush — on unmount React detaches
+  // videoRef BEFORE effect cleanups run, so the element can't be read there
+  const lastPos = useRef({ t: 0, d: 0 })
+
+  const flashOsd = useCallback((text: string) => {
+    setOsd((o) => ({ text, n: (o?.n || 0) + 1 }))
+    if (osdTimer.current) clearTimeout(osdTimer.current)
+    osdTimer.current = setTimeout(() => setOsd(null), 900)
+  }, [])
 
   const go = useCallback(
     (id: string) => nav(`/watch/${source}/${animeId}/${id}`, isMy ? { state: { title } } : undefined),
@@ -117,6 +131,7 @@ export default function Player() {
     setSrc('')
     setIsHls(false)
     setBuffering(true)
+    lastPos.current = { t: 0, d: 0 } // don't carry the old episode's position over
     if (!ep) return
     if (isMy) {
       api
@@ -209,10 +224,22 @@ export default function Player() {
     [progCat, epId, ep?.label, title, idx, eps.length, cover, notePlayed]
   )
 
+  // Flush the watch position when leaving the episode/page — the periodic save
+  // is throttled to 4s, so a seek-then-exit could otherwise lose the resume
+  // point. (saveProgress identity changes as metadata loads; the extra interim
+  // saves that causes are harmless.)
+  useEffect(() => {
+    return () => {
+      const { t, d } = lastPos.current
+      if (d && t > 5 && t < d - 1) saveProgress(t, d)
+    }
+  }, [saveProgress])
+
   const onTimeUpdate = () => {
     const v = videoRef.current
     if (!v) return
     if (!scrubbing) setCur(v.currentTime)
+    if (v.duration) lastPos.current = { t: v.currentTime, d: v.duration }
     const now = Date.now()
     if (v.duration && now - lastSave.current > 4000) {
       lastSave.current = now
@@ -277,6 +304,7 @@ export default function Player() {
     const nt = Math.max(0, Math.min(t, v.duration || t))
     v.currentTime = nt
     setCur(nt)
+    if (v.duration) lastPos.current = { t: nt, d: v.duration } // seek-then-exit keeps the new spot
   }
 
   const ratioFromX = (clientX: number) => {
@@ -325,7 +353,18 @@ export default function Player() {
     saveRate(r)
     if (videoRef.current) videoRef.current.playbackRate = r
     setSpeedMenu(false)
+    flashOsd(`${r}x 速度`)
   }
+
+  // close the speed menu when clicking anywhere outside it
+  useEffect(() => {
+    if (!speedMenu) return
+    const onDown = (e: PointerEvent) => {
+      if (speedRef.current && !speedRef.current.contains(e.target as Node)) setSpeedMenu(false)
+    }
+    window.addEventListener('pointerdown', onDown)
+    return () => window.removeEventListener('pointerdown', onDown)
+  }, [speedMenu])
 
   const setVolume = (nv: number) => {
     const v = Math.min(1, Math.max(0, nv))
@@ -335,6 +374,22 @@ export default function Player() {
       videoRef.current.volume = v
       videoRef.current.muted = v === 0
     }
+    return v
+  }
+
+  // keyboard/wheel volume steps, with on-screen feedback
+  const bumpVolume = (d: number) => {
+    const base = videoRef.current && videoRef.current.muted ? 0 : vol
+    const nv = setVolume(base + d)
+    flashOsd(nv === 0 ? '靜音' : `音量 ${Math.round(nv * 100)}%`)
+  }
+
+  // anime openings run ~90s — one press skips straight past the OP
+  const skipIntro = () => {
+    const v = videoRef.current
+    if (!v || !v.duration) return
+    seek(v.currentTime + 90)
+    flashOsd('+90 秒 跳過片頭')
   }
 
   const toggleFullscreen = useCallback(() => {
@@ -375,6 +430,7 @@ export default function Player() {
     if (!v) return
     v.muted = !v.muted
     setMuted(v.muted)
+    flashOsd(v.muted ? '靜音' : `音量 ${Math.round(v.volume * 100)}%`)
   }
 
   const revealUI = useCallback(() => {
@@ -403,16 +459,24 @@ export default function Player() {
           togglePlay()
           break
         case 'ArrowRight':
-          if (v) seek(v.currentTime + 10)
+        case 'l':
+          if (v) {
+            seek(v.currentTime + 10)
+            flashOsd('+10 秒')
+          }
           break
         case 'ArrowLeft':
-          if (v) seek(v.currentTime - 10)
+        case 'j':
+          if (v) {
+            seek(v.currentTime - 10)
+            flashOsd('−10 秒')
+          }
           break
         case 'ArrowUp':
-          setVolume(vol + 0.1)
+          bumpVolume(0.1)
           break
         case 'ArrowDown':
-          setVolume(vol - 0.1)
+          bumpVolume(-0.1)
           break
         case '>':
         case '.':
@@ -421,6 +485,12 @@ export default function Player() {
         case '<':
         case ',':
           setSpeed(SPEEDS[Math.max(0, SPEEDS.indexOf(rate) - 1)] || rate)
+          break
+        case 'm':
+          toggleMute()
+          break
+        case 's':
+          skipIntro()
           break
         case 'f':
           toggleFullscreen()
@@ -432,13 +502,21 @@ export default function Player() {
           if (nextEp) go(nextEp.id)
           break
         case 'Escape':
-          if (!document.fullscreenElement) nav(-1)
+          if (speedMenu) setSpeedMenu(false)
+          else if (!document.fullscreenElement) nav(-1)
           break
+        default:
+          // 0–9 → jump to that tenth of the episode (YouTube-style)
+          if (/^[0-9]$/.test(e.key) && dur) {
+            const n = +e.key
+            seek((dur * n) / 10)
+            flashOsd(`${n * 10}%`)
+          }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [togglePlay, toggleFullscreen, togglePiP, revealUI, nextEp, dur, rate, vol])
+  }, [togglePlay, toggleFullscreen, togglePiP, revealUI, nextEp, dur, rate, vol, speedMenu])
 
   const playedPct = dur ? (cur / dur) * 100 : 0
   const volPct = (muted ? 0 : vol) * 100
@@ -448,6 +526,11 @@ export default function Player() {
       ref={containerRef}
       onMouseMove={revealUI}
       onDoubleClick={toggleFullscreen}
+      onWheel={(e) => {
+        // desktop-player convention: scroll over the video = volume
+        if (e.deltaY) bumpVolume(e.deltaY < 0 ? 0.05 : -0.05)
+        revealUI()
+      }}
       className="relative w-screen h-screen bg-black overflow-hidden select-none"
       style={{ cursor: showUI ? 'default' : 'none' }}
     >
@@ -467,6 +550,10 @@ export default function Player() {
           }}
           onTimeUpdate={onTimeUpdate}
           onLoadedMetadata={onLoadedMeta}
+          onSeeked={() => {
+            const v = videoRef.current
+            if (v && v.duration) lastPos.current = { t: v.currentTime, d: v.duration }
+          }}
           onProgress={onBuffer}
           onWaiting={() => setBuffering(true)}
           onPlaying={() => setBuffering(false)}
@@ -502,6 +589,16 @@ export default function Player() {
       {buffering && src && !err && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="h-14 w-14 border-[3px] border-white/25 border-t-white rounded-full animate-spin" />
+        </div>
+      )}
+
+      {/* transient action feedback (seek / volume / speed) */}
+      {osd && (
+        <div
+          key={osd.n}
+          className="osd-flash absolute top-[16%] left-1/2 -translate-x-1/2 z-40 pointer-events-none bg-black/65 backdrop-blur-sm rounded-full px-5 py-2 text-lg font-semibold tabular-nums text-white shadow-xl"
+        >
+          {osd.text}
         </div>
       )}
 
@@ -615,6 +712,13 @@ export default function Player() {
           <button onClick={togglePlay} className="text-white hover:text-brand transition-colors">{playing ? Icon.pause : Icon.play}</button>
           <button onClick={() => prevEp && go(prevEp.id)} disabled={!prevEp} className="text-white/90 hover:text-brand disabled:opacity-30 transition-colors" title="上一集">{Icon.prev}</button>
           <button onClick={() => nextEp && go(nextEp.id)} disabled={!nextEp} className="text-white/90 hover:text-brand disabled:opacity-30 transition-colors" title="下一集 (N)">{Icon.next}</button>
+          <button
+            onClick={skipIntro}
+            title="快轉 90 秒跳過片頭 (S)"
+            className="text-white/80 hover:text-brand transition-colors text-[11px] font-semibold border border-white/25 hover:border-brand rounded px-1.5 py-0.5"
+          >
+            跳OP
+          </button>
 
           {/* volume — always-visible custom slider */}
           <div className="flex items-center gap-2">
@@ -648,7 +752,7 @@ export default function Player() {
 
           <div className="ml-auto flex items-center gap-3">
             {/* speed */}
-            <div className="relative">
+            <div className="relative" ref={speedRef}>
               <button
                 onClick={() => setSpeedMenu((v) => !v)}
                 className={`px-2 py-1 rounded text-sm font-semibold hover:text-brand transition-colors ${rate !== 1 ? 'text-brand' : 'text-white/90'}`}

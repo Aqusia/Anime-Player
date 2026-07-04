@@ -6,6 +6,7 @@ import { weightedScore } from '../lib'
 import { addSearchHistory, clearSearchHistory, getSearchHistory, removeSearchHistory } from '../searchHistory'
 import Card from '../components/Card'
 import MyCard from '../components/MyCard'
+import { PosterGridSkeleton } from '../components/Skeleton'
 
 type Tab = 'all' | 'me' | 'my'
 
@@ -153,7 +154,9 @@ export default function Search() {
                 </h2>
               )}
               {myLoading && my === null ? (
-                <p className="px-8 text-zinc-500 text-sm">搜尋 Myself 片庫中…</p>
+                <div className="px-8">
+                  <PosterGridSkeleton count={6} />
+                </div>
               ) : my && my.length ? (
                 <div className="flex flex-wrap gap-x-3 gap-y-5 px-8">
                   {my.map((a) => (
